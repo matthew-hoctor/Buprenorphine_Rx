@@ -1,20 +1,23 @@
 ---
 title: "Data Download"
 author: "Matthew Hoctor, PharmD"
-
 date: "`r format(Sys.time(), '%d %B, %Y')`"
-output:
-  quarto::html_document:
-    theme: cerulean
-    highlight: github
-    toc: true
-    toc-depth: 2
-    toc-location: left
-    toc-title: Contents
-    code-fold: true
-    code-overflow: wrap
-    format: html
-    editor: source
+
+quarto::html_document:
+  theme: cerulean
+  highlight: github
+  
+toc: true
+toc-depth: 2
+toc-location: left
+toc-title: Contents
+  
+code-fold: true
+code-overflow: wrap
+code-tools: true
+code-link: true
+
+editor: source
 ---
 
 ```{r setup, include = FALSE}
