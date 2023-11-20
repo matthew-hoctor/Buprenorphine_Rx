@@ -14,5 +14,3 @@ Materials and code for my MPH practice experience project on the effect of the C
 
 
 Tentative: Exploring Effects of the Comprehensive Addiction Recovery Act on Buprenorphine Prescribing Practices using Medicare Part D Data
-
-test edit
