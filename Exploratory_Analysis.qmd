@@ -1,0 +1,116 @@
+---
+title: "Exploratory_Analysis"
+author: "Matthew Hoctor, PharmD"
+
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  quarto::html_document:
+    theme: cerulean
+    highlight: github
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    toc-title: Contents
+    code-fold: true
+    code-overflow: wrap
+    format: html
+    editor: source
+---
+
+```{r setup, include = FALSE}
+# load libraries:
+library(tidyverse)
+library(jsonlite)     #fromJSON and other json functions
+library(data.table)
+library(lubridate)
+library(httr2)
+# library(curl)       #using bash curl instead
+
+# library(httr2) # could not be installed for some reason
+# the following lines allow linux bash commands to be run in the code chunks
+# knitr::opts_chunk$set(engine.opts)
+```
+
+# Overview
+
+We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis will download and compile medicare part D data before and after the legislation for years 2013-2021, and will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.
+
+# Downloading Medicare Part D Data
+
+This analysis does not require individual-patient-level data, and thus does not require the Research Identifiable Files (RIFs) or Limited Data Set (LDS) files; non-identifiable files will be used instead. Datasets from 2013-2021 from the [Medicare Part D Prescribers - by Provider and Drug](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider-and-drug) dataset was downloaded and moved to the `data` folder of the project ([data dict](https://data.cms.gov/resources/medicare-part-d-prescribers-by-provider-and-drug-data-dictionary)). It may be necessary to add info from the [Medicare Part D Prescribers - by Provider](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider) dataset if more provider info is needed; it may be interesting to look at [Medicare Part D Prescribers - by Geography and Drug Data Dictionary](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug) ([data dict](https://data.cms.gov/resources/medicare-part-d-prescribers-by-geography-and-drug-data-dictionary)) later.
+
+For the Medicare Part D Prescribers - by Provider and Drug dataset, the following table of UUIDs is provided:
+
+| Version | UUID                                 |
+|---------|--------------------------------------|
+| 2021    | ab29d858-269a-4d97-908f-a26b1cf95f61 |
+| 2020    | 016d9d07-83eb-434d-91cb-0e7183d89492 |
+| 2019    | 5a27f7a8-c7af-434f-a26c-54db03e22cd1 |
+| 2018    | 4861ecfc-a656-4dcd-accb-b9c3b840dfcb |
+| 2017    | 04b93a42-c533-4e5c-8df9-a8f254886cde |
+| 2016    | 0015c60c-af38-4d06-98bd-f058c0abb778 |
+| 2015    | 5da1b683-99ea-4734-8216-66ffdcd5e443 |
+| 2014    | 2af61f9c-327c-4a23-8b7f-15e38b56e25a |
+| 2013    | 92d814bd-e2fb-48c2-95e7-a4b388a2c4be |
+
+Direct download of data from CMS did not work, see 'Data Download' section below.  Instead, each year's data will be downloaded with curl in BASH and then read into R.
+
+# Data Cleaning
+
+## Importing & Merging Data
+
+NB manually downloading datasets from data.cms.gov only seems to work when the ancillary files are not downloaded as well.  We will begin with the 2021 data while the rest of the datasets download.
+
+Test read of manually downloaded 2021 data:
+
+```{r}
+data_2021 <- read.csv("data/2021/MUP_DPR_RY23_P04_V10_DY21_NPIBN.csv")
+```
+
+Assign `year` variable to 2021 data and create the main dataset, `data`:
+
+```{r}
+data_2021$year <- 2021
+data <- data_2021
+```
+
+Check:
+
+```{r}
+glimpse(data_2021)
+head(data_2021)
+```
+
+This confirms that the data is in the correct format and that the data download was successful.  We can now create the variables of interest:
+
+## MAT
+
+The variable for medication assisted treatment (MAT) is `MAT`, which will be a polytomous variable with the following levels: 
+
+```{r}
+data$MAT
+```
+
+## Rural vs Urban
+
+
+
+
+
+# Exploratory Analysis
+
+## Missing Data
+
+## Geographic MAT Prescribing Patterns
+
+### Buprenorphine
+
+### Methadone
+
+### Naltrexone
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
