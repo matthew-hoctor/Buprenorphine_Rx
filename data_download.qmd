@@ -1,0 +1,190 @@
+---
+title: "Data Download"
+author: "Matthew Hoctor, PharmD"
+
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  quarto::html_document:
+    theme: cerulean
+    highlight: github
+    toc: true
+    toc-depth: 2
+    toc-location: left
+    toc-title: Contents
+    code-fold: true
+    code-overflow: wrap
+    format: html
+    editor: source
+---
+
+```{r setup, include = FALSE}
+# load libraries:
+library(tidyverse)
+# library(jsonlite)     #fromJSON and other json functions
+library(data.table)
+# library(lubridate)
+library(httr2)
+# library(curl)       #using bash curl instead
+
+# library(httr2) # could not be installed for some reason
+# the following lines allow linux bash commands to be run in the code chunks
+# knitr::opts_chunk$set(engine.opts)
+```
+
+# Overview
+
+We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis will download and compile medicare part D data before and after the legislation for years 2013-2021, and will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.
+
+# Downloading Medicare Part D Data
+
+This analysis does not require individual-patient-level data, and thus does not require the Research Identifiable Files (RIFs) or Limited Data Set (LDS) files; non-identifiable files will be used instead. Datasets from 2013-2021 from the [Medicare Part D Prescribers - by Provider and Drug](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider-and-drug) dataset was downloaded and moved to the `data` folder of the project ([data dict](https://data.cms.gov/resources/medicare-part-d-prescribers-by-provider-and-drug-data-dictionary)). It may be necessary to add info from the [Medicare Part D Prescribers - by Provider](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider) dataset if more provider info is needed; it may be interesting to look at [Medicare Part D Prescribers - by Geography and Drug Data Dictionary](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug) ([data dict](https://data.cms.gov/resources/medicare-part-d-prescribers-by-geography-and-drug-data-dictionary)) later.
+
+We will be downloading .csv files from the CMS data catalogues for [ Medicare Part D Prescribers - by Provider and Drug ](https://catalog.data.gov/dataset/medicare-part-d-prescribers-by-provider-and-drug-ad73e) & [ Medicare Part D Prescribers - by Geography and Drug ](https://catalog.data.gov/dataset/medicare-part-d-prescribers-by-geography-and-drug-67fb0) using curl in bash.
+
+# Data Download
+
+## Medicare Part D Prescribers - by Geography and Drug
+
+Going through each year from 2021-2013 we will check if the file exists in the `data` folder, and if not, download it using R.  The download URLs for this dataset are:
+
+https://data.cms.gov/sites/default/files/2023-04/3d3ebd5b-b4bf-45b4-876d-afa7916d1b72/MUP_DPR_RY23_P04_V10_DY21_Geo.csv
+https://data.cms.gov/sites/default/files/2022-07/ca71b7df-4d48-4c2d-aded-2ca22285739c/MUP_DPR_RY22_P04_V10_DY20_Geo.csv
+https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY19_Geo.csv
+https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY18_Geo.csv
+https://data.cms.gov/sites/default/files/2022-01/MUP_PTD_R19_P16_V10_D17_Geo.csv
+https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY16_Geo_0.csv
+https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY15_Geo_0.csv
+https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY14_Geo_0.csv
+https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY13_Geo_0.csv
+
+```{r}
+if(!file.exists("data/geo/2021.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2023-04/3d3ebd5b-b4bf-45b4-876d-afa7916d1b72/MUP_DPR_RY23_P04_V10_DY21_Geo.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2021.csv")
+}
+if(!file.exists("data/geo/2020.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2022-07/ca71b7df-4d48-4c2d-aded-2ca22285739c/MUP_DPR_RY22_P04_V10_DY20_Geo.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2020.csv")
+}
+if(!file.exists("data/geo/2019.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY19_Geo.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2019.csv")
+}
+if(!file.exists("data/geo/2018.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY18_Geo.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2018.csv")
+}
+if(!file.exists("data/geo/2017.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2022-01/MUP_PTD_R19_P16_V10_D17_Geo.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2017.csv")
+}
+if(!file.exists("data/geo/2016.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY16_Geo_0.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2016.csv")
+}
+if(!file.exists("data/geo/2015.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY15_Geo_0.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2015.csv")
+}
+if(!file.exists("data/geo/2014.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY14_Geo_0.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2014.csv")
+}
+if(!file.exists("data/geo/2013.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY13_Geo_0.csv", 
+                method = "libcurl",
+                destfile = "data/geo/2013.csv")
+}
+```
+
+## Medicare Part D Prescribers - by Provider and Drug
+
+### Attempting to use R
+
+We will attempt to download the datasets using the R code as above, but if that fails, we will use the bash code below.
+
+```{r}
+if(!file.exists("data/2021.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2023-04/d75593b0-b2bf-4b98-869f-8be356ca7157/MUP_DPR_RY23_P04_V10_DY21_NPIBN.csv", 
+                method = "libcurl",
+                destfile = "data/2021.csv")
+}
+if(!file.exists("data/2020.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2022-07/f942c9b9-8ce7-4d06-9371-e57af6a49d3f/MUP_DPR_RY22_P04_V10_DY20_NPIBN_0.csv", 
+                method = "libcurl",
+                destfile = "data/2020.csv")
+}
+if(!file.exists("data/2019.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY19_NPIBN_1.csv", 
+                method = "libcurl",
+                destfile = "data/2019.csv")
+}
+if(!file.exists("data/2018.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY18_NPIBN_0.csv", 
+                method = "libcurl",
+                destfile = "data/2018.csv")
+}
+if(!file.exists("data/2017.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY17_NPIBN_1.csv", 
+                method = "libcurl",
+                destfile = "data/2017.csv")
+}
+if(!file.exists("data/2016.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY16_NPIBN_0.csv", 
+                method = "libcurl",
+                destfile = "data/2016.csv")
+}
+if(!file.exists("data/2015.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY15_NPIBN_1.csv", 
+                method = "libcurl",
+                destfile = "data/2015.csv")
+}
+if(!file.exists("data/2014.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY14_NPIBN_1.csv", 
+                method = "libcurl",
+                destfile = "data/2014.csv")
+}
+if(!file.exists("data/2013.csv")){
+  download.file("https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY13_NPIBN_4.csv", 
+                method = "libcurl",
+                destfile = "data/2013.csv")
+}
+
+```
+
+The above code terminates downloads prematurely at ~650 MB for each .csv file, thus we will use curl and bash:
+
+### BASH:
+
+```{bash, engine.path='/bin/bash'}
+for url in "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY13_NPIBN_4.csv" "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY14_NPIBN_1.csv" "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY15_NPIBN_1.csv" "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY16_NPIBN_0.csv" "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY17_NPIBN_1.csv" "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY18_NPIBN_0.csv" "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V10_DY19_NPIBN_1.csv" "https://data.cms.gov/sites/default/files/2022-07/f942c9b9-8ce7-4d06-9371-e57af6a49d3f/MUP_DPR_RY22_P04_V10_DY20_NPIBN_0.csv" "https://data.cms.gov/sites/default/files/2023-04/d75593b0-b2bf-4b98-869f-8be356ca7157/MUP_DPR_RY23_P04_V10_DY21_NPIBN.csv" 
+  do
+      i=$((i+1))
+      year=$((2012+$i))
+      echo "URL: $url"
+      if [[ -f data/$year.csv ]]
+      then
+        echo "The file $year.csv is already downloaded."
+      else
+        curl -X 'GET' $url -o data/$year.csv
+      fi
+  done
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
+```{bash, engine.path='/bin/bash'}
+bash --version
+```
