@@ -46,17 +46,12 @@ See the [data download](https://matthew-hoctor.github.io/Buprenorphine_Rx/data_d
 
 NB manually downloading datasets from data.cms.gov only seems to work when the ancillary files are not downloaded as well.  We will begin with the 2021 data while the rest of the datasets download.
 
+### 2021 Test Run
+
 Test read of manually downloaded 2021 data:
 
 ```{r}
-data_2021 <- read.csv("data/2021/MUP_DPR_RY23_P04_V10_DY21_NPIBN.csv")
-```
-
-Assign `year` variable to 2021 data and create the main dataset, `data`:
-
-```{r}
-data_2021$year <- 2021
-data <- data_2021
+data_2021 <- read.csv("data/2021.csv")
 ```
 
 Check:
@@ -66,21 +61,481 @@ glimpse(data_2021)
 head(data_2021)
 ```
 
-This confirms that the data is in the correct format and that the data download was successful.  We can now create the variables of interest:
-
-## MAT
-
-The variable for medication assisted treatment (MAT) is `MAT`, which will be a polytomous variable with the following levels: 
+This confirms that the data is in the correct format and that the data download was successful.  We can now create the variables of interest.  Assign `year` variable to 2021 data and create the main dataset, `data`:
 
 ```{r}
-data$MAT <-
+data_2021$year <- 2021
 ```
 
-## Rural vs Urban
+The variable for medication assisted treatment (MAT) is `MAT`, which will be a polytomous variable with the following levels: `bup` for buprenorphine, `met` for methadone, and `nal` for naltrexone.
+
+The following R code chunk uses the `stringr` package to find all values of the `Gnrc_Name` variable that contain the string "buprenorphine" and assigns the value `bup` to the `MAT_generic` variable for those rows:
+
+```{r}
+data_2021$MAT_generic <- ifelse(
+  str_detect(data_2021$Gnrc_Name, regex("bupre", ignore_case = TRUE)),
+  "bup", 
+  NA)
+# to test the variable encoding we will table all of the values of `Gnrc_Name which were matched above:
+table(data_2021$Gnrc_Name[data_2021$MAT_generic == "bup"])
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "bup"])
+
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "bup"], data_2021$Gnrc_Name[data_2021$MAT_generic == "bup"])|>
+  # add a row for totals
+  addmargins(margin = 1)
+```
+
+We also want to search for brand names of buprenorphine products.  The following R code chunk uses the `stringr` package to find all values of the `Brnd_Name` variable that contain the strings matching any of the brand names of buprenorphine products and assigns the value `bup` to the `MAT_brand` variable for those rows:
+
+```{r}
+bup_brands <- c("Belbuca", "Bunavail", "Buprenex", "Buprenorphine", "Butrans", "Probuphine", "Sublocade", "Suboxone", "Subutex", "Zubsolv")
+#next we will need to concatinate the strings in the `bup_brands` vector into a single string separated by the `|` character, which is the regex "or" operator:
+bup_brands_pattern <- paste(bup_brands, collapse = "|")
+
+data_2021$MAT_brand <- ifelse(
+  str_detect(data_2021$Brnd_Name, regex(bup_brands_pattern, ignore_case = TRUE)),
+  "bup", 
+  NA)
+```
+
+To validate the encoding of the `MAT_brand` variable, we will table all of the values of `Brnd_Name` which were matched above, and table all of the entries where `MAT_brand` was matched vs entries where `MAT_generic` was matched:
+
+```{r}
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "bup"])
+#this produces an identical table to the one above
+#as an extra precaution we will cross-tabulate the two variables:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "bup"], data_2021$Brnd_Name[data_2021$MAT_generic == "bup"])
+```
+
+We will now sort each observation according to treatment intention, and assign values to the `tx` variable.  Entries in which buprenorphine was used to treat OUD will be assigned `bup_oud`, entries in which buprenorphine was used to treat pain will be assigned `bup_pain`.  Products indicated for OUD include Sublocade, Brixadi (not available during the years studied), all forms of Buprenorphine Hcl/Naloxone Hcl (Suboxone, Zubsolv, Bunavail, Cassipa, and generic), and Buprenorphine HCl (sublingual, NB that that certain NDCs of this product are reported only as 'Buprenorphine' for the brand and generic names); whereas products indicated for pain include Belbuca (buprenorphine HCl buccal), Buprenex, Butrans, Probuphine (implant, discontinued), generic buprenorphine HCl (parenteral), and generic buprenorphine transdermal patches.  Thus, in the `Brnd_Name` vs `Gnrc_Name` cross-tabulation above, we see that two entries are possibly ambiguous, those in which both variables have the value `Buprenorphine` (which could be generic buprenorphine transdermal patches [pain] or buprenorphine HCl sublingual tablets [OUD]), and those in which both variables have the variable `Buprenorphine HCl` (which could be parenteral buprenorphine HCl [pain], or buprenorphine HCl sublingual tablets [OUD]).  Given that usage of buprenorphine for pain is not common practice in the U.S., we will assume that these ambiguous entries are for OUD, and will generate the `tx` variable by recoding the `Brnd_Name` variable:
+
+```{r}
+# using the tidyverse standard function case_when:
+data_2021$tx <- case_match(
+  data_2021$Brnd_Name,
+  c("Bunavail", "Buprenorphine", "Buprenorphine Hcl", "Buprenorphine-Naloxone", "Sublocade", "Suboxone", "Subutex", "Zubsolv") ~ "bup_oud",
+  c("Belbuca", "Buprenex", "Butrans", "Probuphine") ~ "bup_pain",
+  .default = NA
+)
+# validate encoding by cross tabulating `tx` vs `Brnd_Name`:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "bup"], data_2021$tx[data_2021$MAT_brand == "bup"]) |>
+  # add a row for totals for bup_oud and bup_pain:
+  addmargins(margin = 1)
+```
+
+We can now repeat this process for methadone:
+
+```{r}
+data_2021$MAT_generic <- ifelse(
+  str_detect(data_2021$Gnrc_Name, regex("methad", ignore_case = TRUE)),
+  "met", 
+  data_2021$MAT_generic)
+# to test the variable encoding we will table all of the values of `Gnrc_Name which were matched above:
+table(data_2021$Gnrc_Name[data_2021$MAT_generic == "met"])
+# table `Brnd_Name`:
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "met"])
+# as above with buprenorphine we will construct a vector of methadone brand names:
+met_brands <- c("Dolophine", "Methadone", "Methadose")  #NB "Methadone Diskets", "Methadone Intensol" will match with "Methadone"
+# and construct a regex pattern:
+met_brands_pattern <- paste(met_brands, collapse = "|")
+# and assign the `met` value to the `MAT_brand` variable:
+data_2021$MAT_brand <- ifelse(
+  str_detect(
+    data_2021$Brnd_Name, 
+    regex(met_brands_pattern, ignore_case = TRUE)),
+    "met", 
+    data_2021$MAT_brand)
+# validate:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "met"])
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "met"], data_2021$Gnrc_Name[data_2021$MAT_generic == "met"])
+```
+
+We will now sort each observation according to treatment intention, and assign values to the `tx` variable.  Entries in which methadone was used to treat OUD will be assigned `met_oud`, entries in which methadone was used to treat pain will be assigned `met_pain`.  Products indicated for OUD include Dolophine (methadone HCl oral concentrate), Methadone HCl (oral concentrate, oral solution, oral tablet), Methadose (oral concentrate, oral solution, oral tablet), and generic methadone HCl (oral concentrate, oral solution, oral tablet); whereas products indicated for pain include generic methadone HCl (parenteral), Dolophine and Methadone Intensol.  Thus, in the `Brnd_Name` vs `Gnrc_Name` cross-tabulation above, we see that two entries are possibly ambiguous, those in which both variables have the value `Methadone HCl` (which could be parenteral methadone HCl [pain], or methadone HCl oral concentrate, oral solution, Dolophine, or oral tablet [OUD]).  Given that usage of methadone for pain is not common practice in the U.S., we will assume that these ambiguous entries are for OUD, and will generate the `tx` variable by recoding the `Brnd_Name` variable:
+
+```{r}
+data_2021$tx <- case_match(
+  data_2021$Brnd_Name,
+  c("Methadone Hcl", "Methadose") ~ "met_oud",
+  c("Dolophine", "Methadone Diskets", "Methadone Intensol") ~ "met_pain",
+  .default = data_2021$tx
+)
+# validate by tabling `tx` against `Brnd_Name` for entries where MAT_generic == "met":
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "met"], data_2021$tx[data_2021$MAT_generic == "met"])
+```
+
+Repeating for naltrexone:
+
+```{r}
+data_2021$MAT_generic <- ifelse(
+  str_detect(data_2021$Gnrc_Name, regex("naltrex", ignore_case = TRUE)) 
+  & !str_detect(data_2021$Gnrc_Name, regex("Methylnaltrexone", ignore_case = TRUE))  # filter out methylnaltrexone
+  & !str_detect(data_2021$Gnrc_Name, regex("Bupropion", ignore_case = TRUE)),        # filter out Contrave
+  "nal", 
+  data_2021$MAT_generic)
+```
+
+Testing the above encoding:
+
+```{r}
+# to test the variable encoding we will table all of the values of `Gnrc_Name which were matched above:
+table(data_2021$Gnrc_Name[data_2021$MAT_generic == "nal"])
+# and table the brand names:
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "nal"])
+# crosstabulate
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "nal"], data_2021$Gnrc_Name[data_2021$MAT_generic == "nal"])
+```
+
+Checking against brand names:
+
+```{r}
+#as above with buprenorphine we will construct a vector of naltrexone brand names:
+nal_brands <- c("Depade", "Naltrexone", "Revia", "Vivitrol")
+# and construct a regex pattern:
+nal_brands_pattern <- paste(nal_brands, collapse = "|")
+# and assign the `nal` value to the `MAT_brand` variable:
+data_2021$MAT_brand <- ifelse(
+  str_detect(
+    data_2021$Brnd_Name, 
+    regex(nal_brands_pattern, ignore_case = TRUE)),
+    "nal", 
+    data_2021$MAT_brand
+  )
+# validate:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "nal"])
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "nal"], data_2021$Gnrc_Name[data_2021$MAT_brand == "nal"])
+```
+
+Unfortunately there is no way to distinguish between naltrexone for OUD and naltrexone for alcohol use disorder (AUD) using the current dataset.  We will assume that all naltrexone prescriptions are for OUD, and will generate the `tx` variable by recoding the `Brnd_Name` variable:
+
+```{r}
+data_2021$tx <- case_match(
+  data_2021$Brnd_Name,
+  c("Depade", "Naltrexone", "Revia", "Vivitrol", "Naltrexone Hcl", "Naltrexone Microspheres") ~ "nal_oud",
+  .default = data_2021$tx
+)
+# validate by tabling `tx` against `Brnd_Name` for entries where MAT_generic == "nal":
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "nal"], data_2021$tx[data_2021$MAT_generic == "nal"])
+```
+
+As a summary of the `tx` variable, we will tabulate the number of entries for each treatment intention:
+
+```{r}
+table(data_2021$Brnd_Name[!is.na(data_2021$MAT_generic)],
+      data_2021$tx[!is.na(data_2021$MAT_generic)]) |>
+  addmargins(margin = 1)
+```
+
+Lastly we will create a new dataset to work with using only entries corresponding to the three MAT drugs:
+
+```{r}
+data_2021_tx <- data_2021[!is.na(data_2021$tx), ]
+#verify the new dataset by tabulating tx vs brand names as above:
+table(data_2021_tx$Brnd_Name, data_2021_tx$tx) |>
+  addmargins(margin = 1)
+```
+
+### Treatment Variable
+
+We will now create a function to generate the treatment variable, `tx` for each year of data.  For this function we will use the `dataset` argument to refer to the dataset to be processed, and `data` to refer to the data to be returned.  We will generate the `tx` variable, and will also generate `MAT_generic~ and `MAT_brand` to serve as a check on the `tx` variable.  The dataset returned will only include entries for which any of these three variables are not NA. :
+
+```{r}
+# create a function to process the data:
+treatment <- function(data_year, bup_brands_pattern = NULL, met_brands_pattern = NULL, nal_brands_pattern = NULL) {
+  # create the MAT_generic variable for buprenorphine:
+  data_year$MAT_generic <- ifelse(
+    str_detect(
+      data_year$Gnrc_Name, 
+      regex("bupre", ignore_case = TRUE)),
+    "bup", 
+    NA)
+  
+  # create the MAT_brand variable for buprenorphine:
+  # if `bup_brands_pattern` not supplied as an argument, starting by creating a vector of buprenorphine brand names and concatinating to regex:
+  if (is.null(bup_brands_pattern)) {
+    bup_brands <- c("Belbuca", "Bunavail", "Buprenex", "Buprenorphine", "Butrans", "Probuphine", "Sublocade", "Suboxone", "Subutex", "Zubsolv")
+    bup_brands_pattern <- paste(bup_brands, collapse = "|")
+  }
+  # assign the MAT_brand value based on the regex:
+  data_year$MAT_brand <- ifelse(
+    str_detect(
+      data_year$Brnd_Name, 
+      regex(bup_brands_pattern, ignore_case = TRUE)),
+    "bup", 
+    NA)
+  
+  # create the MAT_generic variable for methadone:
+  data_year$MAT_generic <- ifelse(
+    str_detect(
+      data_year$Gnrc_Name, 
+      regex("methad", ignore_case = TRUE)),
+    "met", 
+    data_year$MAT_generic)
+  
+  # create the MAT_brand variable for methadone:
+  # if `met_brands_pattern` not supplied as an argument, starting by creating a vector of methadone brand names and concatinating to regex:
+  if (is.null(met_brands_pattern)) {
+    met_brands <- c("Dolophine", "Methadone", "Methadose", "Diskets")
+    met_brands_pattern <- paste(met_brands, collapse = "|")
+  }
+  # assign the MAT_brand value:
+  data_year$MAT_brand <- ifelse(
+    str_detect(
+      data_year$Brnd_Name, 
+      regex(met_brands_pattern, ignore_case = TRUE)),
+    "met", 
+    data_year$MAT_brand)
+  
+  # create the MAT_generic variable for naltrexone:
+  data_year$MAT_generic <- ifelse(
+    str_detect(
+      data_year$Gnrc_Name, 
+      regex("naltrex", ignore_case = TRUE))
+      & !str_detect(data_year$Gnrc_Name, regex("Methylnaltrexone", ignore_case = TRUE))  # filter out methylnaltrexone
+      & !str_detect(data_year$Gnrc_Name, regex("Bupropion", ignore_case = TRUE))         # filter out Contrave
+      & !str_detect(data_year$Brnd_Name, regex("Embeda", ignore_case = TRUE)),           # filter out Embeda
+    "nal", 
+    data_year$MAT_generic)
+  
+  # create the MAT_brand variable for naltrexone:
+  # if `nal_brands_pattern` not supplied as an argument, starting by creating a vector of naltrexone brand names and concatinating to regex:
+  if (is.null(nal_brands_pattern)) {
+    nal_brands <- c("Depade", "Naltrexone", "Revia", "Vivitrol")
+    nal_brands_pattern <- paste(nal_brands, collapse = "|")
+  }
+  # assign the MAT_brand value:
+  data_year$MAT_brand <- ifelse(
+    str_detect(
+      data_year$Brnd_Name, 
+      regex(nal_brands_pattern, ignore_case = TRUE)),
+    "nal", 
+    data_year$MAT_brand)
+  
+  # create the tx variable using `case_match` as above:
+data_year$tx <- case_match(
+  data_year$Brnd_Name,
+    c("Bunavail", "Buprenorphine", "Buprenorphine Hcl", "Buprenorphine-Naloxone", "Sublocade", "Suboxone", "Subutex", "Zubsolv") ~ "bup_oud",
+    c("Belbuca", "Buprenex", "Butrans", "Probuphine") ~ "bup_pain",
+    c("Methadone Hcl", "Methadose", "Dolophine Hcl", "Diskets") ~ "met_oud",
+    c("Methadone Diskets", "Methadone Intensol") ~ "met_pain",
+    c("Depade", "Naltrexone", "Revia", "Vivitrol", "Naltrexone Hcl", "Naltrexone Microspheres") ~ "nal_oud",
+    .default = NA
+)
+  
+# return the dataset limited to observations with a value in at least one of the MAT variables or the tx variable:
+  return(data_year[!is.na(data_year$MAT_generic) | !is.na(data_year$MAT_brand) | !is.na(data_year$tx), ])
+}
+```
+
+To test the function we will use the 2013 data:
+
+```{r}
+#| cache: true
+# load the 2013 data:
+data_2013 <- read_csv("data/2013.csv")
+
+data_tx <- treatment(data_2013)
+```
+
+```{r}
+#verify the new dataset by tabulating tx vs brand names as above:
+table(data_tx$Brnd_Name[!is.na(data_tx$MAT_generic)], data_tx$tx[!is.na(data_tx$MAT_generic)])
+```
+
+We can now iteratively apply the function to each year of data:
+
+```{r}
+#| cache: true
+# create data_tx as an empty dataset:
+data_tx <- data.frame()
+# iterate over years 2013-2021:
+for (year in 2013:2021) {
+  # load the data:
+  data_year <- read_csv(
+    paste0("data/", year, ".csv"),
+    show_col_types = FALSE,
+    progress = TRUE
+  )
+  # apply the treatment function:
+  data_year <- treatment(data_year)
+  # set the `year` variable:
+  data_year$year <- year
+  # append the data to the `data_tx` dataset:
+  data_tx <- rbind(data_tx, data_year)
+}
+
+# cleanup
+rm(data_year, year)
+```
+
+We can now validate the new dataset by tabulating `tx` vs `brand names` variables as above:
+
+```{r}
+table(data_tx$Brnd_Name[!is.na(data_tx$MAT_generic)], data_tx$tx[!is.na(data_tx$MAT_generic)]) |>
+  # add row for totals:
+  addmargins(margin = 1)
+```
+
+We can see that three lines correspond to null values for the MAT variables, "Diskets" (a methadone OUD product), "Dolophine Hcl" (a methadone product indicated for OUD or pain), and "Embeda" (a morphine/naltrexone product).  We will now count the number of observations with NA values for one or more of the MAT variables or the tx variable:
+
+```{r}
+data_tx %>%
+  # filter to observations with NA values for one or more of the MAT variables or the tx variable:
+  filter(is.na(MAT_generic) | is.na(MAT_brand) | is.na(tx)) |>
+  # count the number of observations:
+  nrow()
+data_tx %>%
+  # filter to observations with NA values for one or more of the MAT variables or the tx variable:
+  filter(is.na(MAT_generic)) |>
+  # count the number of observations:
+  nrow()
+data_tx %>%
+  # filter to observations with NA values for one or more of the MAT variables or the tx variable:
+  filter(is.na(MAT_brand)) |>
+  # count the number of observations:
+  nrow()
+data_tx %>%
+  # filter to observations with NA values for one or more of the MAT variables or the tx variable:
+  filter(is.na(tx)) |>
+  # count the number of observations:
+  nrow()
+```
+
+#### Rural vs Urban
+
+#### Using USGS Data
+
+Using the USGS Populated Places dataset, we will attempt to convert the city/state data from the dataset into the CDC's 2013 Urban-Rural Classification:
+
+ - The USGS dataset (which can be found as a text file within their Geographic Names Information System (GNIS) [here](https://www.usgs.gov/us-board-on-geographic-names/download-gnis-data)) contains several variables including the state name/FIPS, the 'map name' (which is often the city name), and the county name/FIPS.  The first step will be to lookup the city/state in this dataset and retrieve the full FIPS.
+ - Lookup rural-urban clssification: For this step we can use the FIPS code to lookup the CDC's [2013 Urban-Rural Classification Scheme for Counties](https://www.cdc.gov/nchs/data_access/urban_rural.htm); specifically using the [NCHSurbruralcodes Spreadsheet](https://www.cdc.gov/nchs/data/data_acces_files/NCHSURCodes2013.xlsx) which contains the FIPS codes and rural-urban classifications for each county in the US.
+
+```{r}
+# load the USGS Populated Places dataset:
+usgs <- read_delim(
+  "data/PopulatedPlaces_National.txt",
+  delim = "|", # the file is pipe-delimited
+  col_names = TRUE
+)
+```
+
+The following code will find the county FIPS code from the usgs dataset using using `filter` on `state_numeric` and `map_name` in the `usgs` dataset imported above, and then using `pull` to extract the county fips from `county_numeric`:
+
+```{r}
+
+```
 
 
+```{r}
+library(dplyr)
+
+result <- data_tx %>%
+  filter(Prscrbr_State_FIPS %in% usgs$state_numeric, Prscrbr_City %in% usgs$map_name) %>%
+  inner_join(usgs, by = c("Prscrbr_City" = "map_name", "Prscrbr_State_FIPS" = "state_numeric")) %>%
+  pull(county_numeric)
+
+# Show the result
+head(result)
+
+```
 
 
+Please help me create a function to return the full FIPS code for a city/state combination.  My dataset contains the U.S. city in a variable called `Prscrbr_City` and the U.S. state 2-digit-FIPS in a variable called `Prscrbr_State_FIPS`.   I'd like the function to lookup the full county FIPS from the USGS populated places table containing state FIPS in `state_numeric`, city name in a variable called `map_name', and county FIPS in `county_numeric'.  The function should return the full FIPS code in a variable called `FIPS`.
+
+```{r}
+# create a function to lookup the full FIPS code for a city/state combination:
+lookup_fips <- function(city, state, USGS_data) {
+  # filter the USGS dataset to the city/state combination:
+  USGS_data %>%
+    filter(map_name == city, state_numeric == state) %>%
+    # return the full FIPS code:
+    pull(county_numeric)
+}
+
+```
+
+```{r}
+get_full_FIPS <- function(city, state_FIPS, usgs_data) {
+  result <- usgs_data %>%
+    filter(map_name == city, state_numeric == state_FIPS) %>%
+    select(FIPS = county_numeric)
+  
+  if (nrow(result) > 0) {
+    return(result$FIPS)
+  } else {
+    return(NA) # Return NA if no matching FIPS found
+  }
+}
+
+
+get_full_FIPS2 <- function(data, city, state_FIPS, usgs_data) {
+  result <- usgs_data %>%
+    filter(map_name == city, state_numeric == state_FIPS) %>%
+    select(FIPS = county_numeric)
+  
+  if (nrow(result) > 0) {
+    return(result$FIPS)
+  } else {
+    return(NA) # Return NA if no matching FIPS found
+  }
+}
+
+```
+
+We can now apply the function to the dataset:
+
+```{r}
+#| cache: true
+# apply the function to the dataset:
+data_tx$FIPS <- mapply(
+  lookup_fips,
+  city = data_tx$Prscrbr_City,
+  state = data_tx$Prscrbr_State_FIPS,
+  MoreArgs = list(USGS_data = usgs)
+)
+data_tx$FIPS <- mapply(
+  get_full_FIPS,
+  data_tx$Prscrbr_City,
+  data_tx$Prscrbr_State_FIPS,
+  MoreArgs = list(USGS_data = usgs)
+)
+data_tx$FIPS <- get_full_FIPS(
+  city = data_tx$Prscrbr_City, 
+  state_FIPS = data_tx$Prscrbr_State_FIPS, 
+  usgs_data = usgs
+)
+
+```
+
+```{r}
+data_tx$county_FIPS <- usgs |>
+  filter(state_numeric == data_Tx$Prscrbr_State_FIPS) |>
+  head()
+```
+
+
+#### Alternate Intensive Approach
+
+Within this section we will use the dataset created above, find latitude and longitude coordinates for each city/state combination to which an observation corresponds, then convert the coordinates to county FIPS code, and then lookup the rural-urbal classification from the FIPS code.  Breaking down the specifics of each step, we have:
+
+ - Finding the coordinates: we will use the `geocode()` function from the `ggmap` package to find the coordinates for each city/state combination.  The function will return a dataframe with the coordinates for each city/state combination, and will also return a status code indicating whether the coordinates were found successfully.  We will use the status code to filter out any entries for which the coordinates were not found.
+ - Convert coordinates to FIPS using one of several methods
+ - Lookup rural-urban clssification: For this step we can use CDC's [2013 Urban-Rural Classification Scheme for Counties](https://www.cdc.gov/nchs/data_access/urban_rural.htm); specifically the [NCHSurbruralcodes Spreadsheet](https://www.cdc.gov/nchs/data/data_acces_files/NCHSURCodes2013.xlsx) which contains the FIPS codes and rural-urban classifications for each county in the US.
+ 
+The data can be plotted according to FIPS code using `ggplot2` or `MazamaSpatialPlots` packages.
+
+Considering that the first step requires many API queries it would be best to coalate the full treatment dataset from each year before proceeding with this step.  It also requires an API key, so we will first create a new project in the Google Cloud Platform console, enable the Geocoding API, and create an API key.  We will then save the API key as an environment variable in our `.Renviron` file:
+
+```{r}
+
+```
+
+#### Provider Type
+
+#### Merge into main dataset
+
+```{r}
+data <- data_2021
+```
 
 # Exploratory Analysis
 
@@ -93,6 +548,18 @@ data$MAT <-
 ### Methadone
 
 ### Naltrexone
+
+## Causal Discovery?
+
+# Other Thoughts
+
+Indication for OUD use is a potential source of error when assessing prescriptions for buprenorphine and methadone.  Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):
+
+ - Query [FDA NDC DB](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/) for NPIs associated with the values of `Brnd_Name` and `Gnrc_Name` which were matched above, then search those NDCs for the indication for use on DailyMed
+ - Check DEA X waver for prescriber's NPI
+ - Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed
+ - Check prescriber's place of work in NPI DB
+ - interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names
 
 # Session Info
 
