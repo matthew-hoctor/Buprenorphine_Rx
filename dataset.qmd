@@ -7,12 +7,12 @@ quarto::html_document:
   theme: cerulean
   highlight: github
   
-toc: show
-toc-depth: 2
+toc: true
+toc-depth: 4
 toc-location: left
 toc-title: Contents
   
-code-fold: true
+code-fold: show
 code-overflow: wrap
 code-tools: true
 code-link: true
@@ -353,7 +353,7 @@ table(data_tx$Brnd_Name[!is.na(data_tx$MAT_generic)], data_tx$tx[!is.na(data_tx$
 We can now iteratively apply the function to each year of data:
 
 ```{r}
-##| cache: true
+#| output: false
 # create data_tx as an empty dataset:
 data_tx <- data.frame()
 # iterate over years 2013-2021:
@@ -383,7 +383,7 @@ We can now validate the new dataset by tabulating `tx` vs `brand names` variable
 ```{r}
 table(data_tx$Brnd_Name[!is.na(data_tx$MAT_generic)], data_tx$tx[!is.na(data_tx$MAT_generic)]) |>
   # add row for totals:
-  addmargins(margin = 1)
+  addmargins(margin = 1) 
 ```
 
 We can see that three lines correspond to null values for the MAT variables, "Diskets" (a methadone OUD product), "Dolophine Hcl" (a methadone product indicated for OUD or pain), and "Embeda" (a morphine/naltrexone product).  We will now count the number of observations with NA values for one or more of the MAT variables or the tx variable:
@@ -440,17 +440,7 @@ Creating a 'short' dataset to hopefully speed up the lookup process:
 ```{r}
 usgs_short <- usgs |>
   select(state_numeric, map_name, county_numeric, feature_name) |>
-  # rename variables for easier matching with left_join
-  # rename(
-  #   Prscrbr_State_FIPS = state_numeric,
-  #   Prscrbr_City = map_name,
-  #   Prscrbr_County_FIPS = county_numeric
-  # ) |>
-  # # set the city to the first variable
-  # relocate(Prscrbr_City) |>
-  # remove duplicate rows
   distinct()
-
 # test
 n_distinct(usgs_short)
 ```
@@ -465,10 +455,8 @@ usgs_lower <- usgs |>
     map_name = str_to_lower(map_name),              # convert map_name to lower case
     feature_name = str_to_lower(feature_name)       # convert feature_name to lower case
   )
-
 # test
 n_distinct(usgs_lower)
-
 # cleanup
 rm(usgs)
 ```
@@ -507,19 +495,6 @@ data_fips |> filter(is.na(county_numeric)) |>
 
 # store county FIPS in new variable for next merge:
 data_fips$county_fips <- data_fips$county_numeric
-
-# # collect our previously found county FIPS variables into a separate entry:
-# data_fips$county_fips <- fifelse(
-#   !is.na(data_fips$county_fips),               # test if county_fips is not missint
-#   data_fips$county_fips,                       # if not missing, value is county_fips
-#   data_fips$county_numeric,                    # if Prscrbr_County_FIPS is NA, fills in with county_numeric
-#   na = NA
-# )
-# # test
-# table(
-#   data_fips$county_fips == data_fips$county_numeric,
-#   is.na(data_fips$county_fips)
-# ) |> addmargins()
 ```
 
 We can try matching the `Prscrbr_City` to the `feature_name` variable in the USGS dataset:
@@ -601,10 +576,11 @@ data_fips$city_fixed <- expand_abbrev(
   )
 ```
 
-Repeat the above process to match on the new `city_fixed` variable:
+Repeating the above process to match on the new `city_fixed` variable:
+
+first we will collect our previously found county FIPS variables into a single entry:
 
 ```{r}
-# first we will collect our previously found county FIPS variables into a single entry:
 data_fips$county_fips <- fifelse(
   !is.na(data_fips$county_fips),       # test if Prscrbr_County_FIPS is not missint
   data_fips$county_fips,               # if not missing, value is Prscrbr_County_FIPS
@@ -632,8 +608,9 @@ data_fips <- data_fips |>
   select(-county_numeric)
 ```
 
-```{r}
-# Matching city_fixed on map_name:
+Matching city_fixed on map_name:
+
+```{r} 
 data_fips <- data_fips |>
   left_join(
     usgs_short,                                     # the 'right' dataset
@@ -658,6 +635,7 @@ data_fips$county_fips <- fifelse(
   data_fips$county_numeric,
   na = NA
 )
+# how many remain missing
 data_fips |> filter(is.na(county_numeric) & is.na(county_fips)) |> nrow()
 data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
 
@@ -909,10 +887,9 @@ places <- data_fips |>
   summarise(n = n())
 ```
 
-Proceeding to match all lower case:
+Proceeding to match all lower case; first matching city_fixed on map_name:
 
 ```{r}
-# Matching city_fixed on map_name:
 data_fips <- data_fips |>
   left_join(
     usgs_lower[-c(4)],                              # the 'right' dataset; [-c(4)] removes variable with index 4, feature_name
@@ -939,8 +916,9 @@ data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
 data_fips <- data_fips |> select(-county_numeric)                        # remove county_numeric
 ```
 
+Now matching city_fixed on feature_name:
+
 ```{r}
-# matching city_fixed on feature_name:
 data_fips <- data_fips |>
   left_join(
     usgs_lower[-c(2)],                              # the 'right' dataset; [-c(2)] removes variable with index 2
@@ -968,7 +946,7 @@ data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
 data_fips <- data_fips |> select(-county_numeric)
 ```
 
-With fewer than 1% of observations remaining unmatched, we can randomly assign the remaining NA values to one of the counties in the state:
+With fewer than 1% of observations remaining unmatched, we can randomly assign the remaining NA values to one of the counties in `Prscrbr_State_FIPS`:
 
 ```{r}
 data_fips <- data_fips |>
@@ -1017,10 +995,9 @@ rm(places, usgs_lower, usgs_short)
 
 #### Matching to NCHSURC Dataset
 
-We will proceed to match the majority of FIPS codes in the dataset:
+We will proceed to match the majority of FIPS codes in the dataset; starting by loading the NCHSURC dataset:
 
 ```{r}
-# load the CDC's 2013 Urban-Rural Classification Scheme for Counties dataset:
 nchsurc <- read_excel(
   "data/NCHSURCodes2013.xlsx",
   col_names = TRUE) |>
@@ -1051,7 +1028,7 @@ data_nchsurc |> filter(is.na(nchsurc)) |> select(Prscrbr_State_FIPS, fips, rando
 data_nchsurc |> filter(fips == 2063|fips == 11000) |> head(n = 100)
 ```
 
-We will address non-CT FIPS first:
+State FIPS code 09 corresponds to Connecticut; we will address non-CT FIPS first:
 
 ```{r}
 # manually set FIPS 11000 to 11001:
@@ -1080,10 +1057,9 @@ data_nchsurc |> filter(is.na(nchsurc)) |> select(Prscrbr_State_FIPS, fips) |>
 data_nchsurc <- data_nchsurc |> select(-nchsurc_old)
 ```
 
-Apparently [CT has switched from counties to planning ditricts](https://www.federalregister.gov/documents/2022/06/06/2022-12063/change-to-county-equivalents-in-the-state-of-connecticut), and the new codes are in the USGS dataset, but not in the NCHSURC dataset:
+Apparently [CT has switched from counties to planning ditricts](https://www.federalregister.gov/documents/2022/06/06/2022-12063/change-to-county-equivalents-in-the-state-of-connecticut), and the new codes are in the USGS dataset, but not in the NCHSURC dataset.  We will proceed to examine the CT codes, all of which are unmatched:
 
 ```{r}
-# Examine unmatched places
 places <- data_nchsurc |> 
   filter(is.na(nchsurc)) |>
   group_by(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed, fips) |>
@@ -1125,6 +1101,8 @@ places <- left_join(
 places |> filter(is.na(ct_fips)) |> head(n = 100)
 # places |> select(-ct_fips)
 ```
+
+We can see that the CT State Library data is missing some towns, and that some towns are missing from the NCHSURC dataset.  We will manually add these towns to the ct_towns dataset:
 
 ```{r}
 # manually add Willimantic, CT
@@ -1203,6 +1181,8 @@ ct_towns <- ct_towns |> add_row(Town.name = "W Hartford", ct_fips = 9003, state_
 ct_towns <- ct_towns |> add_row(Town.name = "West Redding", ct_fips = 9001, state_numeric = "09")
 ```
 
+After adding the codes for the missing towns, we can join the two datasets together, and test for any remaining unmatched:
+
 ```{r}
 # match the FIPS code to the city name in `data_nchsurc`:
 data_nchsurc <- left_join(
@@ -1256,6 +1236,8 @@ data_nchsurc$nchsurc <- fifelse(
 data_nchsurc |> filter(is.na(nchsurc)) |> nrow()
 ```
 
+Cleanup
+
 ```{r}
 # cleanup
 rm(ct_towns, places, nchsurc)
@@ -1272,9 +1254,9 @@ data_nchsurc |>
   group_by(nchsurc) |> 
   summarise(n = n()) |> 
   arrange(desc(n))
-
+# set urban/rural classification
 data_nchsurc$ur <- fifelse(
-  data_nchsurc$nchsurc %in% c("5", "6"),     # if nchsurc is rural                                                                       
+  data_nchsurc$nchsurc %in% c("5", "6"),     # if nchsurc is rural                    
   "rural",                                   # then rural
   "urban",                                   # else urban
   na = NA
@@ -1307,8 +1289,9 @@ data_nchsurc |>
   arrange(desc(n))
 ```
 
+Further exploration of provider types:
+
 ```{r}
-# explore provider types
 data_nchsurc |> 
   filter(tx == "bup_oud") |>
   group_by(Prscrbr_Type, year) |> 
@@ -1316,13 +1299,11 @@ data_nchsurc |>
       n = n(), 
       Supply_yr = round(sum(Tot_Day_Suply)/365, digits=1),
       Supply_per_Provider_yr = round(Supply_yr/n, digits=1)
-      # Patients = sum(Tot_Benes)
     ) |> 
   arrange(year, desc(n)) |>
   # select only the top 10 entries of each year
   group_by(year) |>
   slice_max(n, n = 10)
-  
 ```
 
 Specify the provider type simplified variable
@@ -1344,22 +1325,40 @@ data_provider <- data_nchsurc |>
 
 # Final dataset
 
+Create final dataset, save datasets, and cleanup:
+
 ```{r}
 data <- data_provider
+# save the final dataset by itself
+save(
+  data,
+  file = "data/data.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+# save intermediate datasets
+save(
+  data_tx, data_provider, data_nchsurc, data_fips,
+  file = "data/data_intermediate.RData",
+  compress = TRUE,
+  compression_level = 9
+)
 # cleanup
 rm(data_tx, data_provider, data_nchsurc, data_fips)
 ```
 
-
 # Other Thoughts
 
-Indication for OUD use is a potential source of error when assessing prescriptions for buprenorphine and methadone.  Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):
+Indication for OUD use (vs pain or EtOH use disorder) is a potential source of error when classifying prescriptions in the `tx` variable.  Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):
 
+ - Classify prescriptions as OUD vs pain vs EtOH use disorder based on KNN of names of other drugs prescribed by the provider
  - Query [FDA NDC DB](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/) for NPIs associated with the values of `Brnd_Name` and `Gnrc_Name` which were matched above, then search those NDCs for the indication for use on DailyMed
  - Check DEA X waver for prescriber's NPI
  - Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed
  - Check prescriber's place of work in NPI DB
  - interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names
+ 
+Translation from NDC to a drug's brand/generic names likely simplifies many analyses, but could be a significant source of bias for our analysis.
 
 # Session Info
 
