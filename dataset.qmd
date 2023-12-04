@@ -1332,14 +1332,32 @@ data <- data_provider
 # save the final dataset by itself
 save(
   data,
-  file = "data/data.RData",
+  file = "dataset/data.RData",
   compress = TRUE,
   compression_level = 9
 )
 # save intermediate datasets
 save(
-  data_tx, data_provider, data_nchsurc, data_fips,
-  file = "data/data_intermediate.RData",
+  data_tx,
+  file = "dataset/data_tx.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+save(
+  data_provider,
+  file = "dataset/data_provider.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+save(
+  data_nchsurc,
+  file = "dataset/data_nchsurc.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+save(
+  data_fips,
+  file = "dataset/data_fips.RData",
   compress = TRUE,
   compression_level = 9
 )

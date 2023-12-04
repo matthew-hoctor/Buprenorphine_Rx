@@ -5,7 +5,7 @@
 <meta name="generator" content="quarto-1.3.433">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 <meta name="author" content="Matthew Hoctor, PharmD">
-<meta name="dcterms.date" content="2023-12-02">
+<meta name="dcterms.date" content="2023-12-03">
 <title>Dataset</title>
 <style>
 code{white-space: pre-wrap;}
@@ -72,15 +72,41 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div id="quarto-sidebar-toc-left" class="sidebar toc-left">
   <nav id="TOC" role="doc-toc" class="toc-active"><h2 id="toc-title">Contents</h2>
    
-  <ul class="collapse">
+  <ul>
 <li><a href="#overview" id="toc-overview" class="nav-link active" data-scroll-target="#overview">Overview</a></li>
   <li><a href="#downloading-medicare-part-d-data" id="toc-downloading-medicare-part-d-data" class="nav-link" data-scroll-target="#downloading-medicare-part-d-data">Downloading Medicare Part D Data</a></li>
   <li>
 <a href="#importing-merging-data" id="toc-importing-merging-data" class="nav-link" data-scroll-target="#importing-merging-data">Importing &amp; Merging Data</a>
+  <ul>
+<li>
+<a href="#test-run" id="toc-test-run" class="nav-link" data-scroll-target="#test-run">2021 Test Run</a>
   <ul class="collapse">
-<li><a href="#test-run" id="toc-test-run" class="nav-link" data-scroll-target="#test-run">2021 Test Run</a></li>
-  <li><a href="#treatment-variable" id="toc-treatment-variable" class="nav-link" data-scroll-target="#treatment-variable">Treatment Variable</a></li>
-  <li><a href="#rural-vs-urban" id="toc-rural-vs-urban" class="nav-link" data-scroll-target="#rural-vs-urban">Rural vs Urban</a></li>
+<li><a href="#dataset" id="toc-dataset" class="nav-link" data-scroll-target="#dataset">Dataset</a></li>
+  <li><a href="#treatment-variables" id="toc-treatment-variables" class="nav-link" data-scroll-target="#treatment-variables">Treatment Variables</a></li>
+  </ul>
+</li>
+  <li>
+<a href="#treatment-variable" id="toc-treatment-variable" class="nav-link" data-scroll-target="#treatment-variable">Treatment Variable</a>
+  <ul class="collapse">
+<li><a href="#treatment-function" id="toc-treatment-function" class="nav-link" data-scroll-target="#treatment-function">Treatment Function</a></li>
+  <li><a href="#validate" id="toc-validate" class="nav-link" data-scroll-target="#validate">Validate</a></li>
+  </ul>
+</li>
+  <li>
+<a href="#rural-vs-urban" id="toc-rural-vs-urban" class="nav-link" data-scroll-target="#rural-vs-urban">Rural vs Urban</a>
+  <ul class="collapse">
+<li>
+<a href="#using-usgs-data" id="toc-using-usgs-data" class="nav-link" data-scroll-target="#using-usgs-data">Using USGS Data</a>
+  <ul class="collapse">
+<li><a href="#usgs-classification-overview" id="toc-usgs-classification-overview" class="nav-link" data-scroll-target="#usgs-classification-overview">USGS Classification Overview</a></li>
+  <li><a href="#prepping-the-usgs-dataset" id="toc-prepping-the-usgs-dataset" class="nav-link" data-scroll-target="#prepping-the-usgs-dataset">Prepping the USGS Dataset</a></li>
+  <li><a href="#searching-usgs-dataset-with-left_join" id="toc-searching-usgs-dataset-with-left_join" class="nav-link" data-scroll-target="#searching-usgs-dataset-with-left_join">Searching USGS dataset with left_join</a></li>
+  <li><a href="#matching-to-nchsurc-dataset" id="toc-matching-to-nchsurc-dataset" class="nav-link" data-scroll-target="#matching-to-nchsurc-dataset">Matching to NCHSURC Dataset</a></li>
+  </ul>
+</li>
+  <li><a href="#alternate-intensive-approach" id="toc-alternate-intensive-approach" class="nav-link" data-scroll-target="#alternate-intensive-approach">Alternate Intensive Approach</a></li>
+  </ul>
+</li>
   <li><a href="#provider-type" id="toc-provider-type" class="nav-link" data-scroll-target="#provider-type">Provider Type</a></li>
   </ul>
 </li>
@@ -109,7 +135,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">December 2, 2023</p>
+      <p class="date">December 3, 2023</p>
     </div>
   </div>
   
@@ -1982,14 +2008,32 @@ can override using the `.groups` argument.</code></pre>
 <span><span class="co"># save the final dataset by itself</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/save.html">save</a></span><span class="op">(</span></span>
 <span>  <span class="va">data</span>,</span>
-<span>  file <span class="op">=</span> <span class="st">"data/data.RData"</span>,</span>
+<span>  file <span class="op">=</span> <span class="st">"dataset/data.RData"</span>,</span>
 <span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  compression_level <span class="op">=</span> <span class="fl">9</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co"># save intermediate datasets</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/save.html">save</a></span><span class="op">(</span></span>
-<span>  <span class="va">data_tx</span>, <span class="va">data_provider</span>, <span class="va">data_nchsurc</span>, <span class="va">data_fips</span>,</span>
-<span>  file <span class="op">=</span> <span class="st">"data/data_intermediate.RData"</span>,</span>
+<span>  <span class="va">data_tx</span>,</span>
+<span>  file <span class="op">=</span> <span class="st">"dataset/data_tx.RData"</span>,</span>
+<span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  compression_level <span class="op">=</span> <span class="fl">9</span></span>
+<span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/save.html">save</a></span><span class="op">(</span></span>
+<span>  <span class="va">data_provider</span>,</span>
+<span>  file <span class="op">=</span> <span class="st">"dataset/data_provider.RData"</span>,</span>
+<span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  compression_level <span class="op">=</span> <span class="fl">9</span></span>
+<span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/save.html">save</a></span><span class="op">(</span></span>
+<span>  <span class="va">data_nchsurc</span>,</span>
+<span>  file <span class="op">=</span> <span class="st">"dataset/data_nchsurc.RData"</span>,</span>
+<span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  compression_level <span class="op">=</span> <span class="fl">9</span></span>
+<span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/save.html">save</a></span><span class="op">(</span></span>
+<span>  <span class="va">data_fips</span>,</span>
+<span>  file <span class="op">=</span> <span class="st">"dataset/data_fips.RData"</span>,</span>
 <span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  compression_level <span class="op">=</span> <span class="fl">9</span></span>
 <span><span class="op">)</span></span>
@@ -2351,7 +2395,7 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 <span id="cb194-8"><a href="#cb194-8" aria-hidden="true" tabindex="-1"></a><span class="co">  highlight: github</span></span>
 <span id="cb194-9"><a href="#cb194-9" aria-hidden="true" tabindex="-1"></a><span class="co">  </span></span>
 <span id="cb194-10"><a href="#cb194-10" aria-hidden="true" tabindex="-1"></a><span class="an">toc:</span><span class="co"> true</span></span>
-<span id="cb194-11"><a href="#cb194-11" aria-hidden="true" tabindex="-1"></a><span class="an">toc-depth:</span><span class="co"> 2</span></span>
+<span id="cb194-11"><a href="#cb194-11" aria-hidden="true" tabindex="-1"></a><span class="an">toc-depth:</span><span class="co"> 4</span></span>
 <span id="cb194-12"><a href="#cb194-12" aria-hidden="true" tabindex="-1"></a><span class="an">toc-location:</span><span class="co"> left</span></span>
 <span id="cb194-13"><a href="#cb194-13" aria-hidden="true" tabindex="-1"></a><span class="an">toc-title:</span><span class="co"> Contents</span></span>
 <span id="cb194-14"><a href="#cb194-14" aria-hidden="true" tabindex="-1"></a><span class="co">  </span></span>
@@ -3675,39 +3719,57 @@ window.document.addEventListener("DOMContentLoaded", function (event) {
 <span id="cb194-1434"><a href="#cb194-1434" aria-hidden="true" tabindex="-1"></a><span class="co"># save the final dataset by itself</span></span>
 <span id="cb194-1435"><a href="#cb194-1435" aria-hidden="true" tabindex="-1"></a><span class="fu">save</span>(</span>
 <span id="cb194-1436"><a href="#cb194-1436" aria-hidden="true" tabindex="-1"></a>  data,</span>
-<span id="cb194-1437"><a href="#cb194-1437" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="st">"data/data.RData"</span>,</span>
+<span id="cb194-1437"><a href="#cb194-1437" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="st">"dataset/data.RData"</span>,</span>
 <span id="cb194-1438"><a href="#cb194-1438" aria-hidden="true" tabindex="-1"></a>  <span class="at">compress =</span> <span class="cn">TRUE</span>,</span>
 <span id="cb194-1439"><a href="#cb194-1439" aria-hidden="true" tabindex="-1"></a>  <span class="at">compression_level =</span> <span class="dv">9</span></span>
 <span id="cb194-1440"><a href="#cb194-1440" aria-hidden="true" tabindex="-1"></a>)</span>
 <span id="cb194-1441"><a href="#cb194-1441" aria-hidden="true" tabindex="-1"></a><span class="co"># save intermediate datasets</span></span>
 <span id="cb194-1442"><a href="#cb194-1442" aria-hidden="true" tabindex="-1"></a><span class="fu">save</span>(</span>
-<span id="cb194-1443"><a href="#cb194-1443" aria-hidden="true" tabindex="-1"></a>  data_tx, data_provider, data_nchsurc, data_fips,</span>
-<span id="cb194-1444"><a href="#cb194-1444" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="st">"data/data_intermediate.RData"</span>,</span>
+<span id="cb194-1443"><a href="#cb194-1443" aria-hidden="true" tabindex="-1"></a>  data_tx,</span>
+<span id="cb194-1444"><a href="#cb194-1444" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="st">"dataset/data_tx.RData"</span>,</span>
 <span id="cb194-1445"><a href="#cb194-1445" aria-hidden="true" tabindex="-1"></a>  <span class="at">compress =</span> <span class="cn">TRUE</span>,</span>
 <span id="cb194-1446"><a href="#cb194-1446" aria-hidden="true" tabindex="-1"></a>  <span class="at">compression_level =</span> <span class="dv">9</span></span>
 <span id="cb194-1447"><a href="#cb194-1447" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb194-1448"><a href="#cb194-1448" aria-hidden="true" tabindex="-1"></a><span class="co"># cleanup</span></span>
-<span id="cb194-1449"><a href="#cb194-1449" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(data_tx, data_provider, data_nchsurc, data_fips)</span>
-<span id="cb194-1450"><a href="#cb194-1450" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
-<span id="cb194-1451"><a href="#cb194-1451" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb194-1452"><a href="#cb194-1452" aria-hidden="true" tabindex="-1"></a><span class="fu"># Other Thoughts</span></span>
-<span id="cb194-1453"><a href="#cb194-1453" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb194-1454"><a href="#cb194-1454" aria-hidden="true" tabindex="-1"></a>Indication for OUD use (vs pain or EtOH use disorder) is a potential source of error when classifying prescriptions in the <span class="in">`tx`</span> variable.  Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):</span>
-<span id="cb194-1455"><a href="#cb194-1455" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb194-1456"><a href="#cb194-1456" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Classify prescriptions as OUD vs pain vs EtOH use disorder based on KNN of names of other drugs prescribed by the provider</span>
-<span id="cb194-1457"><a href="#cb194-1457" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Query <span class="co">[</span><span class="ot">FDA NDC DB</span><span class="co">](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/)</span> for NPIs associated with the values of <span class="in">`Brnd_Name`</span> and <span class="in">`Gnrc_Name`</span> which were matched above, then search those NDCs for the indication for use on DailyMed</span>
-<span id="cb194-1458"><a href="#cb194-1458" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Check DEA X waver for prescriber's NPI</span>
-<span id="cb194-1459"><a href="#cb194-1459" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed</span>
-<span id="cb194-1460"><a href="#cb194-1460" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Check prescriber's place of work in NPI DB</span>
-<span id="cb194-1461"><a href="#cb194-1461" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names</span>
-<span id="cb194-1462"><a href="#cb194-1462" aria-hidden="true" tabindex="-1"></a> </span>
-<span id="cb194-1463"><a href="#cb194-1463" aria-hidden="true" tabindex="-1"></a>Translation from NDC to a drug's brand/generic names likely simplifies many analyses, but could be a significant source of bias for our analysis.</span>
-<span id="cb194-1464"><a href="#cb194-1464" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb194-1465"><a href="#cb194-1465" aria-hidden="true" tabindex="-1"></a><span class="fu"># Session Info</span></span>
-<span id="cb194-1466"><a href="#cb194-1466" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb194-1469"><a href="#cb194-1469" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
-<span id="cb194-1470"><a href="#cb194-1470" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
-<span id="cb194-1471"><a href="#cb194-1471" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb194-1448"><a href="#cb194-1448" aria-hidden="true" tabindex="-1"></a><span class="fu">save</span>(</span>
+<span id="cb194-1449"><a href="#cb194-1449" aria-hidden="true" tabindex="-1"></a>  data_provider,</span>
+<span id="cb194-1450"><a href="#cb194-1450" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="st">"dataset/data_provider.RData"</span>,</span>
+<span id="cb194-1451"><a href="#cb194-1451" aria-hidden="true" tabindex="-1"></a>  <span class="at">compress =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb194-1452"><a href="#cb194-1452" aria-hidden="true" tabindex="-1"></a>  <span class="at">compression_level =</span> <span class="dv">9</span></span>
+<span id="cb194-1453"><a href="#cb194-1453" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb194-1454"><a href="#cb194-1454" aria-hidden="true" tabindex="-1"></a><span class="fu">save</span>(</span>
+<span id="cb194-1455"><a href="#cb194-1455" aria-hidden="true" tabindex="-1"></a>  data_nchsurc,</span>
+<span id="cb194-1456"><a href="#cb194-1456" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="st">"dataset/data_nchsurc.RData"</span>,</span>
+<span id="cb194-1457"><a href="#cb194-1457" aria-hidden="true" tabindex="-1"></a>  <span class="at">compress =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb194-1458"><a href="#cb194-1458" aria-hidden="true" tabindex="-1"></a>  <span class="at">compression_level =</span> <span class="dv">9</span></span>
+<span id="cb194-1459"><a href="#cb194-1459" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb194-1460"><a href="#cb194-1460" aria-hidden="true" tabindex="-1"></a><span class="fu">save</span>(</span>
+<span id="cb194-1461"><a href="#cb194-1461" aria-hidden="true" tabindex="-1"></a>  data_fips,</span>
+<span id="cb194-1462"><a href="#cb194-1462" aria-hidden="true" tabindex="-1"></a>  <span class="at">file =</span> <span class="st">"dataset/data_fips.RData"</span>,</span>
+<span id="cb194-1463"><a href="#cb194-1463" aria-hidden="true" tabindex="-1"></a>  <span class="at">compress =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb194-1464"><a href="#cb194-1464" aria-hidden="true" tabindex="-1"></a>  <span class="at">compression_level =</span> <span class="dv">9</span></span>
+<span id="cb194-1465"><a href="#cb194-1465" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb194-1466"><a href="#cb194-1466" aria-hidden="true" tabindex="-1"></a><span class="co"># cleanup</span></span>
+<span id="cb194-1467"><a href="#cb194-1467" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(data_tx, data_provider, data_nchsurc, data_fips)</span>
+<span id="cb194-1468"><a href="#cb194-1468" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb194-1469"><a href="#cb194-1469" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb194-1470"><a href="#cb194-1470" aria-hidden="true" tabindex="-1"></a><span class="fu"># Other Thoughts</span></span>
+<span id="cb194-1471"><a href="#cb194-1471" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb194-1472"><a href="#cb194-1472" aria-hidden="true" tabindex="-1"></a>Indication for OUD use (vs pain or EtOH use disorder) is a potential source of error when classifying prescriptions in the <span class="in">`tx`</span> variable.  Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):</span>
+<span id="cb194-1473"><a href="#cb194-1473" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb194-1474"><a href="#cb194-1474" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Classify prescriptions as OUD vs pain vs EtOH use disorder based on KNN of names of other drugs prescribed by the provider</span>
+<span id="cb194-1475"><a href="#cb194-1475" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Query <span class="co">[</span><span class="ot">FDA NDC DB</span><span class="co">](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/)</span> for NPIs associated with the values of <span class="in">`Brnd_Name`</span> and <span class="in">`Gnrc_Name`</span> which were matched above, then search those NDCs for the indication for use on DailyMed</span>
+<span id="cb194-1476"><a href="#cb194-1476" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Check DEA X waver for prescriber's NPI</span>
+<span id="cb194-1477"><a href="#cb194-1477" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed</span>
+<span id="cb194-1478"><a href="#cb194-1478" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>Check prescriber's place of work in NPI DB</span>
+<span id="cb194-1479"><a href="#cb194-1479" aria-hidden="true" tabindex="-1"></a><span class="ss"> - </span>interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names</span>
+<span id="cb194-1480"><a href="#cb194-1480" aria-hidden="true" tabindex="-1"></a> </span>
+<span id="cb194-1481"><a href="#cb194-1481" aria-hidden="true" tabindex="-1"></a>Translation from NDC to a drug's brand/generic names likely simplifies many analyses, but could be a significant source of bias for our analysis.</span>
+<span id="cb194-1482"><a href="#cb194-1482" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb194-1483"><a href="#cb194-1483" aria-hidden="true" tabindex="-1"></a><span class="fu"># Session Info</span></span>
+<span id="cb194-1484"><a href="#cb194-1484" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb194-1487"><a href="#cb194-1487" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb194-1488"><a href="#cb194-1488" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
+<span id="cb194-1489"><a href="#cb194-1489" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
 </code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div></div></div></div></div>
 </div> <!-- /content -->
