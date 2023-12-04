@@ -27,6 +27,7 @@ library(tidyverse)
 library(data.table)
 # library(lubridate)
 library(httr2)
+library(fst)
 # library(curl)       #using bash curl instead
 
 # library(httr2) # could not be installed for some reason
@@ -180,6 +181,48 @@ for url in "https://data.cms.gov/sites/default/files/2021-08/MUP_DPR_RY21_P04_V1
         curl -X 'GET' $url -o data/$year.csv
       fi
   done
+```
+
+# Write FST Files
+
+Starting with the main dataset:
+
+```{r}
+for (year in 2013:2021) {
+  # load the data:
+  data_year <- read_csv(
+    paste0("data/", year, ".csv"),
+    show_col_types = FALSE,
+    progress = FALSE
+  )
+  # write the data:
+  write_fst(
+    data_year, 
+    paste0("data/", year, ".fst")
+  )
+}
+# cleanup
+rm(year, data_year)
+```
+
+Repeating for the geographic data:
+
+```{r}
+for (year in 2013:2021) {
+  # load the data:
+  data_year <- read_csv(
+    paste0("data/geo/", year, ".csv"),
+    show_col_types = FALSE,
+    progress = FALSE
+  )
+  # write the data:
+  write_fst(
+    data_year, 
+    paste0("data/geo/", year, ".fst")
+  )
+}
+# cleanup
+rm(year, data_year)
 ```
 
 # Session Info
