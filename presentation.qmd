@@ -1,0 +1,56 @@
+---
+title: "Buprenorphine Presentation"
+author: "Matthew Hoctor, PharmD"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
+format: 
+  revealjs:
+    theme: solarized
+    # template: OHSU-PSU
+  
+toc: true
+toc-depth: 4
+toc-location: left
+toc-title: Contents
+  
+code-fold: true
+code-overflow: wrap
+# code-tools: true
+# code-link: true
+
+editor: source
+---
+
+# Background
+
+## OUD Epidemiology
+
+## OUD Treatment
+
+## Buprenorphine Law
+
+Drug Addiction Treatment Act (DARA), 2002
+
+-   Allowed X-waivered physicians to prescribe for OUD
+
+Buprenorphine Approved, 2002
+
+-   Schedule III: no DEA manufacturing quota
+-   Approved for use outside of specialized treatment centers
+
+Comprehensive Addiction and Recovery Act (CARA), 2016
+
+-   Extended X-waiver to NPs and PAs; required 24h of training
+-   Set budget specifically to address OUD epidemic
+
+Consolidated Appropriations Act (MAT), 2023
+
+-   Removed X-waiver requirement
+
+## Motivation
+
+# Conclusion
+
+## Challenges
+
+# References
