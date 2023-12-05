@@ -1,0 +1,482 @@
+---
+title: "Classification of Ambiguous Treatments"
+author: "Matthew Hoctor, PharmD"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
+quarto::html_document:
+  theme: cerulean
+  highlight: github
+  
+toc: true
+toc-depth: 4
+toc-location: left
+toc-title: Contents
+  
+code-fold: true
+code-overflow: wrap
+code-tools: true
+code-link: true
+
+execute:
+  freeze: auto
+
+editor: source
+---
+
+```{r}
+#| label: setup
+#| #| output: false
+#| 
+# load libraries:
+library(tidyverse)
+# library(FLAME)                  # not suitable for matching on this dataset
+library(xgboost)
+library(caret)                    #for confusionMatrix function
+library(fst)
+# library(DiagrammeR)               # for plotting XGBoost trees
+# library(ggplot2)
+# # library(MazamaSpatialUtils)
+# library(MazamaSpatialPlots)
+# library(plotly)
+# library(leaflet)
+# library(data.table)
+# library(lubridate)
+```
+
+# Overview
+
+We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis will download and compile medicare part D data before and after the legislation for years 2013-2021, and will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.
+
+Within this section we seek to classify potentially ambiguous entries corresponding to brand names `Buprenorphine` or `Buprenorphine Hcl`.  There are several methods to consider including logistic regression, however we will attempt to classify these ambiguities according to the Fast Large-scale Almost Matching Exactly (FLAME) algorithm ([described here](https://arxiv.org/abs/1707.06315)), as implemented in the [FLAME package](https://cran.r-project.org/web/packages/FLAME/).  We can consider matching on several variables:
+
+ - The set of other medications prescribed, and/or specific high-yield medications (e.g. methadone, naltrexone, naloxone, etc.)
+ - Prescriber's state or county
+ - Prescriber's NCHSUR classification
+ - Prescriber's specialty
+ - Unit drug cost; i.e. `Tot_Drug_Cost` / `Tot_Day_Suply`
+
+# Classification of Ambiguous Treatments
+
+## Loading Data
+
+Load saved data
+
+```{r}
+load(file = "dataset/data.RData")
+```
+
+To collect only observations from providers who prescribe buprenorphine we will create a vector of NPIs from our dataset.  First we will update the treatment variable to reflect ambiguous values (i.e. Brnd_Name is either `Buprenorphine` or `Buprenorphine Hcl`), setting the value of `tx` to `bup_ambig`:
+
+```{r}
+data <- data |>
+  mutate(tx = ifelse(Brnd_Name == "Buprenorphine" | Brnd_Name == "Buprenorphine Hcl", "bup_ambig", tx))
+# check by: table tx vs brand name for buprenorphine
+table(
+  data$Brnd_Name[data$tx == "bup_oud" | data$tx == "bup_pain" | data$tx == "bup_ambig"],
+  data$tx[data$tx == "bup_oud" | data$tx == "bup_pain" | data$tx == "bup_ambig"]
+)
+```
+
+## Find Classifiers
+
+We can now create a dataset of NPI/year pairs corresponding to prescribers who have prescribed buprenorphine that year.  We will use this dataset to extract the other drugs prescribed by these prescribers.
+
+```{r}
+providers <- data |>
+  filter(tx == "bup_oud" | tx == "bup_pain" | data$tx == "bup_ambig") |>
+  select(Prscrbr_NPI, year, tx) |>
+  distinct()
+```
+
+Count number of NPI/year pairs in the `providers` dataset which have both tx == "bup_oud" and tx == "bup_pain"; these pairs will be less useful for classification.
+
+```{r}
+providers |> 
+  group_by(Prscrbr_NPI, year) |> 
+  summarise(
+    n = n(),
+    n_oud = sum(tx == "bup_oud"),
+    n_pain = sum(tx == "bup_pain"),
+    .groups = "drop_last"
+  ) |> 
+  filter(n_oud > 0 & n_pain > 0) |>
+  nrow()
+```
+
+Pivot the `providers` dataset to wide format such that each row is a unique NPI/year pair with new columns for each treatment bucket (i.e. `bup_oud`, `bup_pain`, `bup_ambig`):
+
+```{r}
+providers_wide <- providers |>
+  pivot_wider(
+    id_cols = c(Prscrbr_NPI, year),
+    names_from = tx,
+    values_from = tx,
+    # should the line below be as follows:
+    # values_fn = function(x) (length(x)/length(x)),
+    values_fn = length,
+    values_fill = 0
+  )
+# examine providers with bup_ambig==1
+sum(providers_wide$bup_ambig == 1)
+sum(providers_wide$bup_ambig == 0)
+sum(providers_wide$bup_ambig == 0 & providers_wide$bup_oud == 1 & providers_wide$bup_pain == 1)
+table(
+  providers_wide$bup_oud[providers_wide$bup_ambig == 1],
+  providers_wide$bup_pain[providers_wide$bup_ambig == 1],
+  dnn = c("bup_oud", "bup_pain")
+)
+```
+
+We can now create a new dataset of observations corresponding to NPI/year pairs corresponding to prescribers who have prescribed buprenorphine that year:
+
+```{r}
+# create data_classification as an empty dataset:
+data_classification <- data.frame()
+# iterate over years 2013-2021:
+for (year in 2013:2021) {
+  # load the data:
+  data_year <- read_fst(
+    paste0("data/", year, ".fst")
+  ) |>
+  # select only necessary variables
+  select(Prscrbr_NPI, Brnd_Name, Gnrc_Name)
+  # set the `year` variable:
+  data_year$year <- year
+  
+  # inner join with `providers_wide` dataset to restrict to NPI/year combinations from `providers`:
+  data_year <- inner_join(
+      data_year,
+      providers_wide, 
+      by = c("Prscrbr_NPI", "year"),
+      relationship = "many-to-one"
+    )
+  # append the data to the `data_classification` dataset:
+  data_classification <- rbind(data_classification, data_year)
+}
+# cleanup
+rm(data_year, year)  
+```
+
+We can now widen the `data_classification` dataset created above such that each row is a unique NPI/year pair with new columns for the generic names of each drug prescribed.  First some numbers:
+
+```{r}
+# count the number of distinct generic names in the dataset
+data_classification |> select(Gnrc_Name) |> n_distinct()
+# count number of distinct NPI/year pairs in the `providers` dataset
+providers |> select(Prscrbr_NPI, year)  |> n_distinct()
+# average number of generic names per NPI/year pair
+nrow(data_classification)/154354
+# summing over bup_oud, bup_pain, and bup_ambig
+sum(data_classification$bup_oud)
+sum(data_classification$bup_pain)
+sum(data_classification$bup_ambig)
+```
+
+Looking again at the most frequently prescribed drugs in the dataset, this time breaking it down by _pain and _oud, and normalizing by the counts computed above:
+
+```{r}
+drug_freq <- data_classification |> 
+  # exclude unhelpful observations with oud==1 & pain==1 & ambig==0
+  filter(!(bup_oud == 1 & bup_pain == 1 & bup_ambig == 0)) |>
+  # exclude observations mapping to bup_ambig, i.e. Brnd_Name is either `Buprenorphine` or `Buprenorphine Hcl`
+  filter(!(Brnd_Name == "Buprenorphine" | Brnd_Name == "Buprenorphine Hcl")) |>
+  # compute summary statistics by grouping
+  group_by(Gnrc_Name) |> 
+  summarise(
+    n_oud = sum(bup_oud),
+    n_pain = sum(bup_pain),
+    n_ambig = sum(bup_ambig),
+    n = n()
+  )
+# display top 100
+drug_freq |> 
+  arrange(desc(n)) |> 
+  head(100)
+```
+
+Normalize the counts by dividing by the total number of NPI/year pairs in the dataset; then compute a contrast score and weighted contrast score for each drug; the contrast will be the absolute value of the difference between the normalized counts for OUD and pain over the sum of the normalized counts for OUD and pain. The weighted contrast will be the contrast score multiplied by n_ambig:
+
+```{r}
+# calc column totals:
+N_oud <- sum(drug_freq$n_oud)
+N_pain <- sum(drug_freq$n_pain)
+N_ambig <- sum(drug_freq$n_ambig)
+N <- sum(drug_freq$n)
+
+# mutate columns:
+drug_freq <- drug_freq |> 
+# normalize columns:
+  mutate(
+    n_oud = signif(1000*n_oud/N_oud, 3),
+    n_pain = signif(1000*n_pain/N_pain, 3),
+    n_ambig = signif(1000*n_ambig/N_ambig, 3),
+    n = signif(1000*n/N, 3)
+  ) |> 
+  # add contrasts columns for OUD vs pain
+  mutate(
+    contrast = signif((n_oud-n_pain)/(n_oud+n_pain), 3),
+    w_contrast = signif(n_ambig*(n_oud-n_pain)/(n_oud+n_pain), 3)
+  )
+# display top 100
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100)
+```
+
+Assess the contrasts:
+
+```{r}
+# sum weighted contrast over top 50 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 50 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+```
+
+This relatively low value suggests that the top 50 generic names are not more sensitive to OUD or to pain.
+
+Repeating the above analysis for Brand Name:
+
+```{r}
+brnd_freq <- data_classification |> 
+  # exclude unhelpful observations with oud==1 & pain==1 & ambig==0
+  filter(!(bup_oud == 1 & bup_pain == 1 & bup_ambig == 0)) |>
+  # exclude observations mapping to bup_ambig, i.e. Brnd_Name is either `Buprenorphine` or `Buprenorphine Hcl`
+  filter(!(Brnd_Name == "Buprenorphine" | Brnd_Name == "Buprenorphine Hcl")) |>
+  # compute summary statistics by grouping
+  group_by(Brnd_Name) |> 
+  summarise(
+    n_oud = sum(bup_oud),
+    n_pain = sum(bup_pain),
+    n_ambig = sum(bup_ambig),
+    n = n()
+  )
+# calc column totals:
+N_oud <- sum(brnd_freq$n_oud)
+N_pain <- sum(brnd_freq$n_pain)
+N_ambig <- sum(brnd_freq$n_ambig)
+N <- sum(brnd_freq$n)
+# mutate columns:
+brnd_freq <- brnd_freq |> 
+# normalize columns:
+  mutate(
+    n_oud = signif(1000*n_oud/N_oud, 3),
+    n_pain = signif(1000*n_pain/N_pain, 3),
+    n_ambig = signif(1000*n_ambig/N_ambig, 3),
+    n = signif(1000*n/N, 3)
+  ) |> 
+  # add contrasts columns for OUD vs pain
+  mutate(
+    contrast = signif((n_oud-n_pain)/(n_oud+n_pain), 3),
+    w_contrast = signif(n_ambig*(n_oud-n_pain)/(n_oud+n_pain), 3)
+  )
+# display top 100
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100)
+```
+
+Assess the contrasts:
+
+```{r}
+# sum weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+```
+
+These values are similar, but have a somewhat lower absolute value; thus we will use the generic names for classification of ambiguous observations.
+
+```{r}
+generic_top_50 <- drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(Gnrc_Name) |>
+  pull()
+# create new dataset from drug_classification with only top 50 generic names
+gnrc_50_w <- data_classification |> 
+  filter(Gnrc_Name %in% generic_top_50) |>
+  # widen the dataset to create new columns for each of the top 50
+  pivot_wider(
+    id_cols = c(Prscrbr_NPI, year),
+    names_from = Gnrc_Name,
+    values_from = Gnrc_Name,
+    values_fn = function(x) (length(x)/length(x)),
+    values_fill = 0
+  )
+```
+
+We can now create 50 new variables in the main dataset, `data`, one for each of the top 50 generic names, which will be 1 if the provider prescribed the medication in the given year, and 0 otherwise; i.e. for each observation in `data` the NPI/year pair will match with the NPI/year pair in data_classification.
+
+```{r}
+data_gnrc_50 <- left_join(
+  data,
+  gnrc_50_w,
+  by = c("Prscrbr_NPI", "year"),
+  relationship = "many-to-one"
+)
+```
+
+update `tx` to include `bup_ambig` value for ambiguous entries
+
+```{r} 
+data_gnrc_50$tx[data_gnrc_50$Brnd_Name == "Buprenorphine" | data_gnrc_50$Brnd_Name == "Buprenorphine Hcl"] <- "bup_ambig"
+# table data to verify
+table(data_gnrc_50$Brnd_Name[data_gnrc_50$MAT_brand == "bup"], data_gnrc_50$tx[data_gnrc_50$MAT_brand == "bup"])
+```
+
+Adding other potential predictors including unit drug cost, average days supply with summary statistics for unit cost and average days supply by tx:
+
+```{r}
+data_gnrc_50$unit_cst <- data_gnrc_50$Tot_Drug_Cst/data_gnrc_50$Tot_Day_Suply
+data_gnrc_50$days_rx <- data_gnrc_50$Tot_Day_Suply/data_gnrc_50$Tot_Clms
+# summary statistics
+data_gnrc_50 |> 
+  filter(tx == "bup_ambig" | tx == "bup_oud" | tx == "bup_pain") |>
+  group_by(tx) |> 
+  summarise(
+    avg_unit_cst = mean(unit_cst),
+    IQR_unit_cst = IQR(unit_cst),
+    avg_days_rx = mean(days_rx),
+    IQR_days_rx = IQR(days_rx)
+  )
+# Summary statistics for 'Buprenorphine Hcl' and 'Buprenorphine' separately
+data_gnrc_50 |> 
+  filter(Brnd_Name == "Buprenorphine Hcl" | Brnd_Name == "Buprenorphine") |>
+  group_by(Brnd_Name) |> 
+  summarise(
+    avg_unit_cst = mean(unit_cst),
+    IQR_unit_cst = IQR(unit_cst),
+    avg_days_rx = mean(days_rx),
+    IQR_days_rx = IQR(days_rx)
+  )
+# plot histogram days supply by tx
+data_gnrc_50 |> 
+  filter(tx == "bup_ambig" | tx == "bup_oud" | tx == "bup_pain") |>
+  ggplot(aes(x = days_rx, fill = tx)) +
+  geom_histogram(binwidth = 1) +
+  facet_wrap(~tx, scales = "free") +
+  theme_minimal()
+```
+
+This preliminary analysis of these potential predictors suggests that average unit cost is not likely a good predictor, but days supply of 21 days or fewer could potentially be a good predictor.  We will include days supply over 21 as a new variable and cleanup the rest:
+
+```{r}
+data_gnrc_50$days_rx_21 <- ifelse(data_gnrc_50$days_rx > 21, 1, 0)
+```
+
+Cleanup datasets which will not be used for matching:
+
+```{r}
+rm(data_classification, drug_freq, brnd_freq, gnrc_50, providers, providers_wide, generic_top_50, N, N_ambig, N_oud, N_pain, gnrc_50_w)
+```
+
+## XGBoost
+
+Prepare a dataset for XGBoost:
+
+```{r}
+data_xgb <- data_gnrc_50 |>
+  # filter to only include observations with tx = bup_ambig, bup_oud, or bup_pain
+  filter(tx == "bup_oud" | tx == "bup_pain") |>
+  # remove columns which will not be matched on
+  select( -Prscrbr_Last_Org_Name, -Prscrbr_First_Name, -Prscrbr_State_FIPS, -Prscrbr_Type_Src, -Brnd_Name, -Gnrc_Name, 
+          #-Tot_Clms, -Tot_30day_Fills, -Tot_Day_Suply, -Tot_Drug_Cst, 
+          -Tot_Benes, -GE65_Sprsn_Flag, -GE65_Tot_Clms, -GE65_Tot_30day_Fills, -GE65_Tot_Drug_Cst, -GE65_Tot_Day_Suply, -GE65_Bene_Sprsn_Flag, -GE65_Tot_Benes, -MAT_generic, -MAT_brand, -county_fips, 
+            # -city_fixed, 
+          -random_fips, 
+          # -unit_cst, -days_rx
+          ) |>
+  # Convert to matrix so that it can be used in XGBoost
+  data.matrix()
+```
+
+Split the data into training and test sets:
+
+```{r}
+#set the seed with the system time
+set.seed(Sys.time())
+#split the data into training and test sets using caret
+trainIndex <- createDataPartition(data_xgb$tx, p = .8, list = FALSE, times = 1)
+data_xgb.train <- data_xgb[ trainIndex,]
+data_xgb.test  <- data_xgb[-trainIndex,]
+```
+
+
+
+# Other Thoughts
+
+Future work could include:
+
+ - Matching After Learning to Stretch (MALTS) algorithm ([described in this paper](https://arxiv.org/abs/1811.07415)) is likely an ideal algorithm for this purpose, as it would provide explainable matches for the purpose of causal inference, and likely would provide higher quality matches.  Implementation of the python package could be attempted with `reticulate`.  Implementation could be attempted by `reticulate`-ing the [python package](https://github.com/almost-matching-exactly/MALTS.
+ - Adaptive Hyper-Box Matching (AHB) could be attempted ([paper](https://arxiv.org/abs/2003.01805)), as this accomodates continuous variables; however the [R package](https://github.com/almost-matching-exactly/AHB-R-package) does not look to be extensively maintained.
+ - Gradient boosting with `catboost` package.
+ 
+# Unused Code Chunks
+
+Prepare data for FLAME matching:
+
+```{r}
+data_flame <- data_gnrc_50 |>
+  # filter to only include observations with tx = bup_ambig, bup_oud, or bup_pain
+  filter(tx == "bup_ambig" | tx == "bup_oud" | tx == "bup_pain") |>
+  # create a new column called 'treated' from tx containing bup_oud, or bup_pain, NA for all other values
+  mutate(treated = case_match(
+    tx,
+    "bup_oud" ~ "bup_oud",
+    "bup_pain" ~ "bup_pain",
+    .default = NA_character_
+  )) |>
+  # remove columns which will not be matched on
+  select( -Prscrbr_Last_Org_Name, -Prscrbr_First_Name, -Prscrbr_State_FIPS, -Prscrbr_Type_Src, -Brnd_Name, -Gnrc_Name, -Tot_Clms, -Tot_30day_Fills, -Tot_Day_Suply, -Tot_Drug_Cst, -Tot_Benes, -GE65_Sprsn_Flag, -GE65_Tot_Clms, -GE65_Tot_30day_Fills, -GE65_Tot_Drug_Cst, -GE65_Tot_Day_Suply, -GE65_Bene_Sprsn_Flag, -GE65_Tot_Benes, -MAT_generic, -MAT_brand, -tx, -county_fips, -city_fixed, -random_fips, -unit_cst, -days_rx)
+```
+
+```{r}
+rm(gnrc_50)
+```
+
+Then widen the dataset
+
+```{r}
+# widen the dataset
+data_c_wide_brnd <- pivot_wider(
+    data_classification,
+    names_from = Brnd_Name,
+    values_from = Brnd_Name,
+    id_cols = c(Prscrbr_NPI, bup_oud, bup_pain, bup_ambig, year),
+    values_fn = length,
+    values_fill = 0
+  )
+#create a similar wide dataset for generic names
+data_c_wide_gnrc <- pivot_wider(
+    data_classification,
+    names_from = Gnrc_Name,
+    values_from = Gnrc_Name,
+    id_cols = c(Prscrbr_NPI, bup_oud, bup_pain, bup_ambig, year),
+    values_fn = length,
+    values_fill = 0
+  )
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
