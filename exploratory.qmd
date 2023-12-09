@@ -1,0 +1,231 @@
+---
+title: "Exploratory Analysis"
+author: "Matthew Hoctor, PharmD"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
+quarto::html_document:
+  theme: cerulean
+  highlight: github
+  
+toc: true
+toc-depth: 4
+toc-location: left
+toc-title: Contents
+  
+code-fold: show
+code-overflow: wrap
+code-tools: true
+code-link: true
+
+execute:
+  freeze: auto
+
+editor: source
+---
+
+```{r}
+#| label: setup
+#| output: false
+# load libraries:
+library(tidyverse)
+library(ggplot2)
+library(fst)                      # for fast loading/saving of datasets
+# library(MazamaSpatialUtils)   # not needed?
+library(MazamaSpatialPlots)
+library(plotly)
+# library(leaflet)
+# library(data.table)
+# library(lubridate)
+```
+
+```{r}
+#| label: setup MazamaSpatialPlots
+#| output: false
+setSpatialDataDir('data/spatial')
+# check if spatial data is installed:
+installed <- installedSpatialData()
+install <- c("USCensusStates_02", "USCensusCounties_02", "NaturalEarthAdm1")
+for (SpatialData in install) {
+  if (!(SpatialData %in% installedSpatialData())) {
+    installSpatialData(SpatialData)
+  }
+}
+loadSpatialData("NaturalEarthAdm1")
+# cleanup
+rm(installed, install)
+```
+
+# Project Overview
+
+We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis  will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.
+
+# Load Data
+
+## Main Dataset
+
+Load data_pred, and data_gnrc_100 datasets
+
+```{r}
+#| label: load prediction datasets
+# load data_pred and data_gnrc_100 if not already in the environment:
+if (!exists("data_pred")) {
+  load("dataset/data_pred.RData")
+}
+if (!exists("data_gnrc_100")) {
+  load("dataset/data_gnrc_100.RData")
+}
+```
+
+## Geography/Drug data
+
+Recall that this dataset aggregates Part D prescribing data by year, drug and state.  The data dictionary can be found [here](https://data.cms.gov/resources/medicare-part-d-prescribers-by-geography-and-drug-data-dictionary).
+
+```{r}
+#| label: load geo data
+# initialize 'geo' as an empty daraframe:
+geo <- data.frame()
+# load the data iteratively by year:
+for (year in 2013:2021) {
+  data_year <- read_fst(
+    paste0("data/geo/", year, ".fst"))
+  # set the year variable
+  data_year$year <- year
+  # append the data to the 'geo' dataframe:
+  geo <- rbind(geo, data_year)
+}
+# cleanup
+rm(year, data_year)
+```
+
+## NDC Data
+
+This .csv file was generated from the FDA [National Drug Code Directory](https://www.accessdata.fda.gov/scripts/cder/ndc/index.cfm) by searching for 'buprenorphine' within the nonproprietary name field.
+
+```{r}
+#| label: load NDC data
+if (!exists("bup_ndcs")) {
+bup_ndcs <- read_csv("data/bup_NDCs.csv")
+}
+```
+
+# Exploratory Analysis
+
+## Examine NDCs/Products
+
+Products mapping to 'buprenorphine':
+
+```{r}
+#| label: examine buprenorphine products
+bup_ndcs |>
+  #filter by proprietary name contains exactly 'buprenorphine'
+  filter(str_detect(`Substance Name`, "BUPRENORPHINE$")) |>
+  # select relevant columns including brand name, generic, substance, route, dosage form, package description:
+  select(`Proprietary Name`, `Nonproprietary Name`, `Dosage Form`, `Route`) |>
+  # display only unique rows
+  unique() |>
+  head(100)
+```
+
+Products mapping to 'buprenorphine hcl':
+
+```{r}
+#| label: examine buprenorphine hcl products
+bup_ndcs |>
+  #filter by proprietary name contains exactly 'buprenorphine'
+  filter(str_detect(`Substance Name`, "BUPRENORPHINE HYDROCHLORIDE$")) |>
+  # select relevant columns including brand name, generic, substance, route, dosage form, package description:
+  select(`Proprietary Name`, `Nonproprietary Name`, `Dosage Form`, `Route`) |>
+  # display only unique rows
+  unique() |>
+  head(100)
+```
+
+Products mapping to 'buprenorphine hcl/naloxone hcl':
+
+```{r}
+#| label: examine buprenorphine-naloxone products
+bup_ndcs |>
+  #filter by proprietary name contains exactly 'buprenorphine'
+  filter(str_detect(`Substance Name`, "BUPRENORPHINE") &
+           str_detect(`Substance Name`, "NALOXONE")) |>
+  # select relevant columns including brand name, generic, substance, route, dosage form, package description:
+  select(`Proprietary Name`, `Nonproprietary Name`, `Dosage Form`, `Route`) |>
+  # display only unique rows
+  unique() |>
+  head(100)
+```
+
+From these results we can confrim that the CMS aggregation by brand name is not sufficient to differentiate buprenorphine products used for OUD vs pain; and in particular that the SL tablets (for OUD, previously sold as Subutex) map to 'Buprenorphine HCl' and to 'Buprenorphine', whereas buprenorphine hcl for IM/IV injection (previously sold as Buprenex) maps to 'Buprenorphine HCl', and buprenorphine ER (for pain, previously sold as Butrans) patch maps to 'Buprenorphine'.
+
+## Examine geo data
+
+```{r}
+#| label: examine geo data
+
+# map total claims for buprenorphine by state using stateMap()
+geo_test <- geo |>
+  # exclude national level entries
+  filter(!Prscrbr_Geo_Desc == "National") |>
+  # filter to generic names containing 'Buprenorphine'
+  filter(grepl("Buprenorphine", Gnrc_Name)) |>
+  # rename Prscrbr_Geo_Desc to 'stateCode'
+  dplyr::mutate(stateCode = stateToCode(Prscrbr_Geo_Desc)) |>
+  # group by year and state
+  group_by(year, stateCode) |>
+  # summarize total claims
+  summarize(
+    Bup_Clms = sum(Tot_Clms)
+  ) |>
+  # plot using stateMap()
+  stateMap(
+    parameter = "Bup_Clms",
+    palette = viridisLite::viridis(20),
+    stateBorderColor = 'black',
+    title = "Total Buprenorphine Claims by State"
+  )
+geo_test
+```
+
+```{r}
+
+```
+
+
+# Missing Data
+
+First we will look at missing values in the data for key variables including 'Tot_Clms', 'Tot_Day_Suply', 'Tot_Benes', and using the 'random_fips' variable to identify missing values by county. We will initially look at the totals for the full dataset, and then break down these values by year, by drug, and by prescriber type.
+
+## Geographic MAT Prescribing Patterns
+
+The data can be plotted according to FIPS code using `ggplot2` or `MazamaSpatialPlots` packages.
+
+### Buprenorphine
+
+### Methadone
+
+### Naltrexone
+
+## Causal Discovery?
+
+# Other Thoughts
+
+Indication for OUD use is a potential source of error when assessing prescriptions for buprenorphine and methadone. Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):
+
+-   Query [FDA NDC DB](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/) for NPIs associated with the values of `Brnd_Name` and `Gnrc_Name` which were matched above, then search those NDCs for the indication for use on DailyMed
+-   Check DEA X waver for prescriber's NPI
+-   Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed
+-   Check prescriber's place of work in NPI DB
+-   interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names
+
+# Unused Code
+
+```{r}
+
+```
+
+
+# Session Info
+
+```{r}
+sessionInfo()
+```

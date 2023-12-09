@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.433">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<meta name="author" content="Matthew Hoctor, PharmD">
+<meta name="dcterms.date" content="2023-12-08">
+<title>Exploratory Analysis</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+<script src="exploratory_files/libs/clipboard/clipboard.min.js"></script>
+<script src="exploratory_files/libs/quarto-html/quarto.js"></script>
+<script src="exploratory_files/libs/quarto-html/popper.min.js"></script>
+<script src="exploratory_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="exploratory_files/libs/quarto-html/anchor.min.js"></script>
+<link href="exploratory_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="exploratory_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="exploratory_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="exploratory_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="exploratory_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+</head>
+<body>
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article toc-left">
+<div id="quarto-sidebar-toc-left" class="sidebar toc-left">
+  <nav id="TOC" role="doc-toc" class="toc-active"><h2 id="toc-title">Contents</h2>
+   
+  <ul>
+<li><a href="#project-overview" id="toc-project-overview" class="nav-link active" data-scroll-target="#project-overview">Project Overview</a></li>
+  <li>
+<a href="#load-data" id="toc-load-data" class="nav-link" data-scroll-target="#load-data">Load Data</a>
+  <ul>
+<li><a href="#main-dataset" id="toc-main-dataset" class="nav-link" data-scroll-target="#main-dataset">Main Dataset</a></li>
+  <li><a href="#geographydrug-data" id="toc-geographydrug-data" class="nav-link" data-scroll-target="#geographydrug-data">Geography/Drug data</a></li>
+  <li><a href="#ndc-data" id="toc-ndc-data" class="nav-link" data-scroll-target="#ndc-data">NDC Data</a></li>
+  </ul>
+</li>
+  <li>
+<a href="#exploratory-analysis" id="toc-exploratory-analysis" class="nav-link" data-scroll-target="#exploratory-analysis">Exploratory Analysis</a>
+  <ul>
+<li><a href="#examine-ndcsproducts" id="toc-examine-ndcsproducts" class="nav-link" data-scroll-target="#examine-ndcsproducts">Examine NDCs/Products</a></li>
+  <li><a href="#examine-geo-data" id="toc-examine-geo-data" class="nav-link" data-scroll-target="#examine-geo-data">Examine geo data</a></li>
+  </ul>
+</li>
+  <li>
+<a href="#missing-data" id="toc-missing-data" class="nav-link" data-scroll-target="#missing-data">Missing Data</a>
+  <ul>
+<li>
+<a href="#geographic-mat-prescribing-patterns" id="toc-geographic-mat-prescribing-patterns" class="nav-link" data-scroll-target="#geographic-mat-prescribing-patterns">Geographic MAT Prescribing Patterns</a>
+  <ul class="collapse">
+<li><a href="#buprenorphine" id="toc-buprenorphine" class="nav-link" data-scroll-target="#buprenorphine">Buprenorphine</a></li>
+  <li><a href="#methadone" id="toc-methadone" class="nav-link" data-scroll-target="#methadone">Methadone</a></li>
+  <li><a href="#naltrexone" id="toc-naltrexone" class="nav-link" data-scroll-target="#naltrexone">Naltrexone</a></li>
+  </ul>
+</li>
+  <li><a href="#causal-discovery" id="toc-causal-discovery" class="nav-link" data-scroll-target="#causal-discovery">Causal Discovery?</a></li>
+  </ul>
+</li>
+  <li><a href="#other-thoughts" id="toc-other-thoughts" class="nav-link" data-scroll-target="#other-thoughts">Other Thoughts</a></li>
+  <li><a href="#unused-code" id="toc-unused-code" class="nav-link" data-scroll-target="#unused-code">Unused Code</a></li>
+  <li><a href="#session-info" id="toc-session-info" class="nav-link" data-scroll-target="#session-info">Session Info</a></li>
+  </ul></nav>
+</div>
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+</div>
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block default"><div class="quarto-title">
+<div class="quarto-title-block"><div><h1 class="title">Exploratory Analysis</h1><button type="button" class="btn code-tools-button dropdown-toggle" id="quarto-code-tools-menu" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi"></i> Code</button><ul class="dropdown-menu dropdown-menu-end" aria-labelelledby="quarto-code-tools-menu"><li><a id="quarto-show-all-code" class="dropdown-item" href="javascript:void(0)" role="button">Show All Code</a></li><li><a id="quarto-hide-all-code" class="dropdown-item" href="javascript:void(0)" role="button">Hide All Code</a></li><li><hr class="dropdown-divider"></li><li><a id="quarto-view-source" class="dropdown-item" href="javascript:void(0)" role="button">View Source</a></li></ul></div></div>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Matthew Hoctor, PharmD </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">December 8, 2023</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header><div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb1"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="co"># load libraries:</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html">library</a></span><span class="op">(</span><span class="va"><a href="https://tidyverse.tidyverse.org">tidyverse</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html">library</a></span><span class="op">(</span><span class="va"><a href="https://ggplot2.tidyverse.org">ggplot2</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html">library</a></span><span class="op">(</span><span class="va"><a href="http://www.fstpackage.org">fst</a></span><span class="op">)</span>                      <span class="co"># for fast loading/saving of datasets</span></span>
+<span><span class="co"># library(MazamaSpatialUtils)   # not needed?</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/MazamaScience/MazamaSpatialPlots">MazamaSpatialPlots</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html">library</a></span><span class="op">(</span><span class="va"><a href="https://plotly-r.com">plotly</a></span><span class="op">)</span></span>
+<span><span class="co"># library(leaflet)</span></span>
+<span><span class="co"># library(data.table)</span></span>
+<span><span class="co"># library(lubridate)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb2"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/pkg/MazamaSpatialUtils/man/setSpatialDataDir.html">setSpatialDataDir</a></span><span class="op">(</span><span class="st">'data/spatial'</span><span class="op">)</span></span>
+<span><span class="co"># check if spatial data is installed:</span></span>
+<span><span class="va">installed</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/pkg/MazamaSpatialUtils/man/installedSpatialData.html">installedSpatialData</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="va">install</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html">c</a></span><span class="op">(</span><span class="st">"USCensusStates_02"</span>, <span class="st">"USCensusCounties_02"</span>, <span class="st">"NaturalEarthAdm1"</span><span class="op">)</span></span>
+<span><span class="kw">for</span> <span class="op">(</span><span class="va">SpatialData</span> <span class="kw">in</span> <span class="va">install</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="op">(</span><span class="va">SpatialData</span> <span class="op"><a href="https://rdrr.io/r/base/match.html">%in%</a></span> <span class="fu"><a href="https://rdrr.io/pkg/MazamaSpatialUtils/man/installedSpatialData.html">installedSpatialData</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/pkg/MazamaSpatialUtils/man/installSpatialData.html">installSpatialData</a></span><span class="op">(</span><span class="va">SpatialData</span><span class="op">)</span></span>
+<span>  <span class="op">}</span></span>
+<span><span class="op">}</span></span>
+<span><span class="fu"><a href="https://rdrr.io/pkg/MazamaSpatialUtils/man/loadSpatialData.html">loadSpatialData</a></span><span class="op">(</span><span class="st">"NaturalEarthAdm1"</span><span class="op">)</span></span>
+<span><span class="co"># cleanup</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/rm.html">rm</a></span><span class="op">(</span><span class="va">installed</span>, <span class="va">install</span><span class="op">)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+<section id="project-overview" class="level1"><h1>Project Overview</h1>
+<p>We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.</p>
+</section><section id="load-data" class="level1"><h1>Load Data</h1>
+<section id="main-dataset" class="level2"><h2 class="anchored" data-anchor-id="main-dataset">Main Dataset</h2>
+<p>Load data_pred, and data_gnrc_100 datasets</p>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb3"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="co"># load data_pred and data_gnrc_100 if not already in the environment:</span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/exists.html">exists</a></span><span class="op">(</span><span class="st">"data_pred"</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/load.html">load</a></span><span class="op">(</span><span class="st">"dataset/data_pred.RData"</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/exists.html">exists</a></span><span class="op">(</span><span class="st">"data_gnrc_100"</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/load.html">load</a></span><span class="op">(</span><span class="st">"dataset/data_gnrc_100.RData"</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section><section id="geographydrug-data" class="level2"><h2 class="anchored" data-anchor-id="geographydrug-data">Geography/Drug data</h2>
+<p>Recall that this dataset aggregates Part D prescribing data by year, drug and state. The data dictionary can be found <a href="https://data.cms.gov/resources/medicare-part-d-prescribers-by-geography-and-drug-data-dictionary">here</a>.</p>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb4"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="co"># initialize 'geo' as an empty daraframe:</span></span>
+<span><span class="va">geo</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html">data.frame</a></span><span class="op">(</span><span class="op">)</span></span>
+<span><span class="co"># load the data iteratively by year:</span></span>
+<span><span class="kw">for</span> <span class="op">(</span><span class="va">year</span> <span class="kw">in</span> <span class="fl">2013</span><span class="op">:</span><span class="fl">2021</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">data_year</span> <span class="op">&lt;-</span> <span class="fu"><a href="http://www.fstpackage.org/reference/write_fst.html">read_fst</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/paste.html">paste0</a></span><span class="op">(</span><span class="st">"data/geo/"</span>, <span class="va">year</span>, <span class="st">".fst"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="co"># set the year variable</span></span>
+<span>  <span class="va">data_year</span><span class="op">$</span><span class="va">year</span> <span class="op">&lt;-</span> <span class="va">year</span></span>
+<span>  <span class="co"># append the data to the 'geo' dataframe:</span></span>
+<span>  <span class="va">geo</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cbind.html">rbind</a></span><span class="op">(</span><span class="va">geo</span>, <span class="va">data_year</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span><span class="co"># cleanup</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/rm.html">rm</a></span><span class="op">(</span><span class="va">year</span>, <span class="va">data_year</span><span class="op">)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+</div>
+</section><section id="ndc-data" class="level2"><h2 class="anchored" data-anchor-id="ndc-data">NDC Data</h2>
+<p>This .csv file was generated from the FDA <a href="https://www.accessdata.fda.gov/scripts/cder/ndc/index.cfm">National Drug Code Directory</a> by searching for ‘buprenorphine’ within the nonproprietary name field.</p>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb5"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/exists.html">exists</a></span><span class="op">(</span><span class="st">"bup_ndcs"</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
+<span><span class="va">bup_ndcs</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://readr.tidyverse.org/reference/read_delim.html">read_csv</a></span><span class="op">(</span><span class="st">"data/bup_NDCs.csv"</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details><div class="cell-output cell-output-stderr">
+<pre><code>Rows: 217 Columns: 19
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+chr (19): Proprietary Name, NDC Package Code, Strength, Dosage Form, Route, ...
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
+</div>
+</section></section><section id="exploratory-analysis" class="level1"><h1>Exploratory Analysis</h1>
+<section id="examine-ndcsproducts" class="level2"><h2 class="anchored" data-anchor-id="examine-ndcsproducts">Examine NDCs/Products</h2>
+<p>Products mapping to ‘buprenorphine’:</p>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb7"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="va">bup_ndcs</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co">#filter by proprietary name contains exactly 'buprenorphine'</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html">filter</a></span><span class="op">(</span><span class="fu"><a href="https://stringr.tidyverse.org/reference/str_detect.html">str_detect</a></span><span class="op">(</span><span class="va">`Substance Name`</span>, <span class="st">"BUPRENORPHINE$"</span><span class="op">)</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># select relevant columns including brand name, generic, substance, route, dosage form, package description:</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html">select</a></span><span class="op">(</span><span class="va">`Proprietary Name`</span>, <span class="va">`Nonproprietary Name`</span>, <span class="va">`Dosage Form`</span>, <span class="va">`Route`</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># display only unique rows</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/unique.html">unique</a></span><span class="op">(</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="fl">100</span><span class="op">)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details><div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 6 × 4
+  `Proprietary Name`               `Nonproprietary Name` `Dosage Form`     Route
+  &lt;chr&gt;                            &lt;chr&gt;                 &lt;chr&gt;             &lt;chr&gt;
+1 BRIXADI                          BUPRENORPHINE         INJECTION         SUBC…
+2 Buprenorphine                    Buprenorphine         PATCH             TRAN…
+3 Buprenorphine                    Buprenorphine         PATCH, EXTENDED … TRAN…
+4 buprenorphine transdermal system buprenorphine         PATCH, EXTENDED … TRAN…
+5 Butrans                          buprenorphine         PATCH, EXTENDED … TRAN…
+6 SUBLOCADE                        buprenorphine         SOLUTION          SUBC…</code></pre>
+</div>
+</div>
+<p>Products mapping to ‘buprenorphine hcl’:</p>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb9"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="va">bup_ndcs</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co">#filter by proprietary name contains exactly 'buprenorphine'</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html">filter</a></span><span class="op">(</span><span class="fu"><a href="https://stringr.tidyverse.org/reference/str_detect.html">str_detect</a></span><span class="op">(</span><span class="va">`Substance Name`</span>, <span class="st">"BUPRENORPHINE HYDROCHLORIDE$"</span><span class="op">)</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># select relevant columns including brand name, generic, substance, route, dosage form, package description:</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html">select</a></span><span class="op">(</span><span class="va">`Proprietary Name`</span>, <span class="va">`Nonproprietary Name`</span>, <span class="va">`Dosage Form`</span>, <span class="va">`Route`</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># display only unique rows</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/unique.html">unique</a></span><span class="op">(</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="fl">100</span><span class="op">)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details><div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 7 × 4
+  `Proprietary Name`          `Nonproprietary Name`       `Dosage Form`    Route
+  &lt;chr&gt;                       &lt;chr&gt;                       &lt;chr&gt;            &lt;chr&gt;
+1 BELBUCA                     buprenorphine hydrochloride FILM, SOLUBLE    BUCC…
+2 BUPRENORPHINE               BUPRENORPHINE               TABLET           SUBL…
+3 Buprenorphine               Buprenorphine               TABLET           SUBL…
+4 Buprenorphine HCl           Buprenorphine HCl           TABLET           SUBL…
+5 Buprenorphine Hydrochloride Buprenorphine Hydrochloride INJECTION        INTR…
+6 buprenorphine hydrochloride buprenorphine hydrochloride TABLET           SUBL…
+7 Buprenorphine Hydrochloride Buprenorphine Hydrochloride INJECTION, SOLU… INTR…</code></pre>
+</div>
+</div>
+<p>Products mapping to ‘buprenorphine hcl/naloxone hcl’:</p>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb11"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="va">bup_ndcs</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co">#filter by proprietary name contains exactly 'buprenorphine'</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html">filter</a></span><span class="op">(</span><span class="fu"><a href="https://stringr.tidyverse.org/reference/str_detect.html">str_detect</a></span><span class="op">(</span><span class="va">`Substance Name`</span>, <span class="st">"BUPRENORPHINE"</span><span class="op">)</span> <span class="op">&amp;</span></span>
+<span>           <span class="fu"><a href="https://stringr.tidyverse.org/reference/str_detect.html">str_detect</a></span><span class="op">(</span><span class="va">`Substance Name`</span>, <span class="st">"NALOXONE"</span><span class="op">)</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># select relevant columns including brand name, generic, substance, route, dosage form, package description:</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/select.html">select</a></span><span class="op">(</span><span class="va">`Proprietary Name`</span>, <span class="va">`Nonproprietary Name`</span>, <span class="va">`Dosage Form`</span>, <span class="va">`Route`</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># display only unique rows</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/unique.html">unique</a></span><span class="op">(</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/utils/head.html">head</a></span><span class="op">(</span><span class="fl">100</span><span class="op">)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details><div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 11 × 4
+   `Proprietary Name`                  `Nonproprietary Name` `Dosage Form` Route
+   &lt;chr&gt;                               &lt;chr&gt;                 &lt;chr&gt;         &lt;chr&gt;
+ 1 Buprenorphine and Naloxone          Buprenorphine and Na… FILM, SOLUBLE BUCC…
+ 2 Buprenorphine and Naloxone          Buprenorphine and Na… TABLET        SUBL…
+ 3 Buprenorphine and Naloxone          Buprenorphine and Na… FILM          BUCC…
+ 4 Buprenorphine and Naloxone          buprenorphine and na… FILM          BUCC…
+ 5 Buprenorphine and Naloxone          buprenorphine hydroc… TABLET        SUBL…
+ 6 Buprenorphine HCl and Naloxone HCl  Buprenorphine and Na… TABLET        SUBL…
+ 7 BUPRENORPHINE HYDROCHLORIDE and NA… BUPRENORPHINE HYDROC… TABLET        SUBL…
+ 8 buprenorphine hydrochloride and na… buprenorphine hydroc… TABLET        SUBL…
+ 9 Buprenorphine Hydrochloride and Na… Buprenorphine Hydroc… TABLET        SUBL…
+10 Suboxone                            buprenorphine hydroc… FILM, SOLUBLE BUCC…
+11 Zubsolv                             buprenorphine hydroc… TABLET, ORAL… SUBL…</code></pre>
+</div>
+</div>
+<p>From these results we can confrim that the CMS aggregation by brand name is not sufficient to differentiate buprenorphine products used for OUD vs pain; and in particular that the SL tablets (for OUD, previously sold as Subutex) map to ‘Buprenorphine HCl’ and to ‘Buprenorphine’, whereas buprenorphine hcl for IM/IV injection (previously sold as Buprenex) maps to ‘Buprenorphine HCl’, and buprenorphine ER (for pain, previously sold as Butrans) patch maps to ‘Buprenorphine’.</p>
+</section><section id="examine-geo-data" class="level2"><h2 class="anchored" data-anchor-id="examine-geo-data">Examine geo data</h2>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb13"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="co"># map total claims for buprenorphine by state using stateMap()</span></span>
+<span><span class="va">geo_test</span> <span class="op">&lt;-</span> <span class="va">geo</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># exclude national level entries</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html">filter</a></span><span class="op">(</span><span class="op">!</span><span class="va">Prscrbr_Geo_Desc</span> <span class="op">==</span> <span class="st">"National"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># filter to generic names containing 'Buprenorphine'</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html">filter</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/grep.html">grepl</a></span><span class="op">(</span><span class="st">"Buprenorphine"</span>, <span class="va">Gnrc_Name</span><span class="op">)</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># rename Prscrbr_Geo_Desc to 'stateCode'</span></span>
+<span>  <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/mutate.html">mutate</a></span><span class="op">(</span>stateCode <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/pkg/MazamaSpatialUtils/man/stateToCode.html">stateToCode</a></span><span class="op">(</span><span class="va">Prscrbr_Geo_Desc</span><span class="op">)</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># group by year and state</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/group_by.html">group_by</a></span><span class="op">(</span><span class="va">year</span>, <span class="va">stateCode</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># summarize total claims</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/summarise.html">summarize</a></span><span class="op">(</span></span>
+<span>    Bup_Clms <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sum.html">sum</a></span><span class="op">(</span><span class="va">Tot_Clms</span><span class="op">)</span></span>
+<span>  <span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="co"># plot using stateMap()</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/MazamaSpatialPlots/man/stateMap.html">stateMap</a></span><span class="op">(</span></span>
+<span>    parameter <span class="op">=</span> <span class="st">"Bup_Clms"</span>,</span>
+<span>    palette <span class="op">=</span> <span class="fu">viridisLite</span><span class="fu">::</span><span class="fu"><a href="https://sjmgarnier.github.io/viridisLite/reference/viridis.html">viridis</a></span><span class="op">(</span><span class="fl">20</span><span class="op">)</span>,</span>
+<span>    stateBorderColor <span class="op">=</span> <span class="st">'black'</span>,</span>
+<span>    title <span class="op">=</span> <span class="st">"Total Buprenorphine Claims by State"</span></span>
+<span>  <span class="op">)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details><div class="cell-output cell-output-stderr">
+<pre><code>`summarise()` has grouped output by 'year'. You can override using the
+`.groups` argument.</code></pre>
+</div>
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb15"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="va">geo_test</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details><div class="cell-output-display">
+<p><img src="exploratory_files/figure-html/examine%20geo%20data-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section></section><section id="missing-data" class="level1"><h1>Missing Data</h1>
+<p>First we will look at missing values in the data for key variables including ‘Tot_Clms’, ‘Tot_Day_Suply’, ‘Tot_Benes’, and using the ‘random_fips’ variable to identify missing values by county. We will initially look at the totals for the full dataset, and then break down these values by year, by drug, and by prescriber type.</p>
+<section id="geographic-mat-prescribing-patterns" class="level2"><h2 class="anchored" data-anchor-id="geographic-mat-prescribing-patterns">Geographic MAT Prescribing Patterns</h2>
+<p>The data can be plotted according to FIPS code using <code>ggplot2</code> or <code>MazamaSpatialPlots</code> packages.</p>
+<section id="buprenorphine" class="level3"><h3 class="anchored" data-anchor-id="buprenorphine">Buprenorphine</h3>
+</section><section id="methadone" class="level3"><h3 class="anchored" data-anchor-id="methadone">Methadone</h3>
+</section><section id="naltrexone" class="level3"><h3 class="anchored" data-anchor-id="naltrexone">Naltrexone</h3>
+</section></section><section id="causal-discovery" class="level2"><h2 class="anchored" data-anchor-id="causal-discovery">Causal Discovery?</h2>
+</section></section><section id="other-thoughts" class="level1"><h1>Other Thoughts</h1>
+<p>Indication for OUD use is a potential source of error when assessing prescriptions for buprenorphine and methadone. Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):</p>
+<ul>
+<li>Query <a href="https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/">FDA NDC DB</a> for NPIs associated with the values of <code>Brnd_Name</code> and <code>Gnrc_Name</code> which were matched above, then search those NDCs for the indication for use on DailyMed</li>
+<li>Check DEA X waver for prescriber’s NPI</li>
+<li>Check prescriber’s buprenorphine panel limit vs count of buprenorphine prescribed</li>
+<li>Check prescriber’s place of work in NPI DB</li>
+<li>interrogate/validate CMS’s method for translating a drug’s NDC into a drug’s brand and generic names</li>
+</ul></section><section id="unused-code" class="level1"><h1>Unused Code</h1>
+</section><section id="session-info" class="level1"><h1>Session Info</h1>
+<div class="cell">
+<details open=""><summary>Code</summary><div class="sourceCode" id="cb16"><pre class="downlit sourceCode r code-with-copy"><code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/sessionInfo.html">sessionInfo</a></span><span class="op">(</span><span class="op">)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details><div class="cell-output cell-output-stdout">
+<pre><code>R version 4.3.2 (2023-10-31)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Ubuntu 22.04.3 LTS
+
+Matrix products: default
+BLAS:   /usr/lib/x86_64-linux-gnu/blas/libblas.so.3.10.0 
+LAPACK: /usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.10.0
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+time zone: America/Vancouver
+tzcode source: system (glibc)
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+ [1] fstcore_0.9.18           plotly_4.10.3            MazamaSpatialPlots_0.2.0
+ [4] MazamaSpatialUtils_0.8.6 sf_1.0-14                fst_0.9.8               
+ [7] lubridate_1.9.3          forcats_1.0.0            stringr_1.5.1           
+[10] dplyr_1.1.4              purrr_1.0.2              readr_2.1.4             
+[13] tidyr_1.3.0              tibble_3.2.1             ggplot2_3.4.4           
+[16] tidyverse_2.0.0         
+
+loaded via a namespace (and not attached):
+ [1] tidyselect_1.2.0      viridisLite_0.4.2     fastmap_1.1.1        
+ [4] lazyeval_0.2.2        leaflet_2.2.1         XML_3.99-0.16        
+ [7] digest_0.6.33         timechange_0.2.0      lifecycle_1.0.4      
+[10] terra_1.7-55          magrittr_2.0.3        compiler_4.3.2       
+[13] rlang_1.1.2           tools_4.3.2           utf8_1.2.4           
+[16] yaml_2.3.7            data.table_1.14.8     lambda.r_1.2.4       
+[19] knitr_1.45            htmlwidgets_1.6.3     bit_4.0.5            
+[22] sp_2.1-2              classInt_0.4-10       RColorBrewer_1.1-3   
+[25] abind_1.4-5           KernSmooth_2.23-22    withr_2.5.2          
+[28] leafsync_0.1.0        grid_4.3.2            fansi_1.0.5          
+[31] e1071_1.7-13          leafem_0.2.3          colorspace_2.1-0     
+[34] scales_1.3.0          dichromat_2.0-0.1     cli_3.6.1            
+[37] crayon_1.5.2          rmarkdown_2.25        generics_0.1.3       
+[40] rstudioapi_0.15.0     httr_1.4.7            tzdb_0.4.0           
+[43] tmaptools_3.1-1       DBI_1.1.3             proxy_0.4-27         
+[46] stars_0.6-4           parallel_4.3.2        formatR_1.14         
+[49] base64enc_0.1-3       vctrs_0.6.4           jsonlite_1.8.7       
+[52] hms_1.1.3             bit64_4.0.5           crosstalk_1.2.1      
+[55] units_0.8-5           glue_1.6.2            lwgeom_0.2-13        
+[58] codetools_0.2-19      stringi_1.8.2         gtable_0.3.4         
+[61] futile.logger_1.4.3   raster_3.6-26         munsell_0.5.0        
+[64] pillar_1.9.0          htmltools_0.5.7       R6_2.5.1             
+[67] vroom_1.6.4           evaluate_0.23         lattice_0.22-5       
+[70] futile.options_1.0.1  png_0.1-8             tmap_3.3-4           
+[73] MazamaCoreUtils_0.5.1 class_7.3-22          Rcpp_1.0.11          
+[76] xfun_0.41             pkgconfig_2.0.3      </code></pre>
+</div>
+</div>
+<!-- -->
+
+</section></main><!-- /main column --><script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  const viewSource = window.document.getElementById('quarto-view-source') ||
+                     window.document.getElementById('quarto-code-tools-source');
+  if (viewSource) {
+    const sourceUrl = viewSource.getAttribute("data-quarto-source-url");
+    viewSource.addEventListener("click", function(e) {
+      if (sourceUrl) {
+        // rstudio viewer pane
+        if (/\bcapabilities=\b/.test(window.location)) {
+          window.open(sourceUrl);
+        } else {
+          window.location.href = sourceUrl;
+        }
+      } else {
+        const modal = new bootstrap.Modal(document.getElementById('quarto-embedded-source-code-modal'));
+        modal.show();
+      }
+      return false;
+    });
+  }
+  function toggleCodeHandler(show) {
+    return function(e) {
+      const detailsSrc = window.document.querySelectorAll(".cell > details > .sourceCode");
+      for (let i=0; i<detailsSrc.length; i++) {
+        const details = detailsSrc[i].parentElement;
+        if (show) {
+          details.open = true;
+        } else {
+          details.removeAttribute("open");
+        }
+      }
+      const cellCodeDivs = window.document.querySelectorAll(".cell > .sourceCode");
+      const fromCls = show ? "hidden" : "unhidden";
+      const toCls = show ? "unhidden" : "hidden";
+      for (let i=0; i<cellCodeDivs.length; i++) {
+        const codeDiv = cellCodeDivs[i];
+        if (codeDiv.classList.contains(fromCls)) {
+          codeDiv.classList.remove(fromCls);
+          codeDiv.classList.add(toCls);
+        } 
+      }
+      return false;
+    }
+  }
+  const hideAllCode = window.document.getElementById("quarto-hide-all-code");
+  if (hideAllCode) {
+    hideAllCode.addEventListener("click", toggleCodeHandler(false));
+  }
+  const showAllCode = window.document.getElementById("quarto-show-all-code");
+  if (showAllCode) {
+    showAllCode.addEventListener("click", toggleCodeHandler(true));
+  }
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script><div class="modal fade" id="quarto-embedded-source-code-modal" tabindex="-1" aria-labelledby="quarto-embedded-source-code-modal-label" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="quarto-embedded-source-code-modal-label">Source Code</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="">
+<div class="sourceCode" id="cb18" data-shortcodes="false"><pre class="sourceCode markdown code-with-copy"><code class="sourceCode markdown"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="an">title:</span><span class="co"> "Exploratory Analysis"</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="an">author:</span><span class="co"> "Matthew Hoctor, PharmD"</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="an">date:</span><span class="co"> "`r format(Sys.time(), '%d %B, %Y')`"</span></span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="co">quarto::html_document:</span></span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a><span class="co">  theme: cerulean</span></span>
+<span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a><span class="co">  highlight: github</span></span>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a><span class="co">  </span></span>
+<span id="cb18-10"><a href="#cb18-10" aria-hidden="true" tabindex="-1"></a><span class="an">toc:</span><span class="co"> true</span></span>
+<span id="cb18-11"><a href="#cb18-11" aria-hidden="true" tabindex="-1"></a><span class="an">toc-depth:</span><span class="co"> 4</span></span>
+<span id="cb18-12"><a href="#cb18-12" aria-hidden="true" tabindex="-1"></a><span class="an">toc-location:</span><span class="co"> left</span></span>
+<span id="cb18-13"><a href="#cb18-13" aria-hidden="true" tabindex="-1"></a><span class="an">toc-title:</span><span class="co"> Contents</span></span>
+<span id="cb18-14"><a href="#cb18-14" aria-hidden="true" tabindex="-1"></a><span class="co">  </span></span>
+<span id="cb18-15"><a href="#cb18-15" aria-hidden="true" tabindex="-1"></a><span class="an">code-fold:</span><span class="co"> show</span></span>
+<span id="cb18-16"><a href="#cb18-16" aria-hidden="true" tabindex="-1"></a><span class="an">code-overflow:</span><span class="co"> wrap</span></span>
+<span id="cb18-17"><a href="#cb18-17" aria-hidden="true" tabindex="-1"></a><span class="an">code-tools:</span><span class="co"> true</span></span>
+<span id="cb18-18"><a href="#cb18-18" aria-hidden="true" tabindex="-1"></a><span class="an">code-link:</span><span class="co"> true</span></span>
+<span id="cb18-19"><a href="#cb18-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-20"><a href="#cb18-20" aria-hidden="true" tabindex="-1"></a><span class="an">execute:</span></span>
+<span id="cb18-21"><a href="#cb18-21" aria-hidden="true" tabindex="-1"></a><span class="co">  freeze: auto</span></span>
+<span id="cb18-22"><a href="#cb18-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-23"><a href="#cb18-23" aria-hidden="true" tabindex="-1"></a><span class="an">editor:</span><span class="co"> source</span></span>
+<span id="cb18-24"><a href="#cb18-24" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb18-25"><a href="#cb18-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-28"><a href="#cb18-28" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-29"><a href="#cb18-29" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: setup</span></span>
+<span id="cb18-30"><a href="#cb18-30" aria-hidden="true" tabindex="-1"></a><span class="co">#| output: false</span></span>
+<span id="cb18-31"><a href="#cb18-31" aria-hidden="true" tabindex="-1"></a><span class="co"># load libraries:</span></span>
+<span id="cb18-32"><a href="#cb18-32" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb18-33"><a href="#cb18-33" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb18-34"><a href="#cb18-34" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(fst)                      <span class="co"># for fast loading/saving of datasets</span></span>
+<span id="cb18-35"><a href="#cb18-35" aria-hidden="true" tabindex="-1"></a><span class="co"># library(MazamaSpatialUtils)   # not needed?</span></span>
+<span id="cb18-36"><a href="#cb18-36" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(MazamaSpatialPlots)</span>
+<span id="cb18-37"><a href="#cb18-37" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(plotly)</span>
+<span id="cb18-38"><a href="#cb18-38" aria-hidden="true" tabindex="-1"></a><span class="co"># library(leaflet)</span></span>
+<span id="cb18-39"><a href="#cb18-39" aria-hidden="true" tabindex="-1"></a><span class="co"># library(data.table)</span></span>
+<span id="cb18-40"><a href="#cb18-40" aria-hidden="true" tabindex="-1"></a><span class="co"># library(lubridate)</span></span>
+<span id="cb18-41"><a href="#cb18-41" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-42"><a href="#cb18-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-45"><a href="#cb18-45" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-46"><a href="#cb18-46" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: setup MazamaSpatialPlots</span></span>
+<span id="cb18-47"><a href="#cb18-47" aria-hidden="true" tabindex="-1"></a><span class="co">#| output: false</span></span>
+<span id="cb18-48"><a href="#cb18-48" aria-hidden="true" tabindex="-1"></a><span class="fu">setSpatialDataDir</span>(<span class="st">'data/spatial'</span>)</span>
+<span id="cb18-49"><a href="#cb18-49" aria-hidden="true" tabindex="-1"></a><span class="co"># check if spatial data is installed:</span></span>
+<span id="cb18-50"><a href="#cb18-50" aria-hidden="true" tabindex="-1"></a>installed <span class="ot">&lt;-</span> <span class="fu">installedSpatialData</span>()</span>
+<span id="cb18-51"><a href="#cb18-51" aria-hidden="true" tabindex="-1"></a>install <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"USCensusStates_02"</span>, <span class="st">"USCensusCounties_02"</span>, <span class="st">"NaturalEarthAdm1"</span>)</span>
+<span id="cb18-52"><a href="#cb18-52" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (SpatialData <span class="cf">in</span> install) {</span>
+<span id="cb18-53"><a href="#cb18-53" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (<span class="sc">!</span>(SpatialData <span class="sc">%in%</span> <span class="fu">installedSpatialData</span>())) {</span>
+<span id="cb18-54"><a href="#cb18-54" aria-hidden="true" tabindex="-1"></a>    <span class="fu">installSpatialData</span>(SpatialData)</span>
+<span id="cb18-55"><a href="#cb18-55" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb18-56"><a href="#cb18-56" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb18-57"><a href="#cb18-57" aria-hidden="true" tabindex="-1"></a><span class="fu">loadSpatialData</span>(<span class="st">"NaturalEarthAdm1"</span>)</span>
+<span id="cb18-58"><a href="#cb18-58" aria-hidden="true" tabindex="-1"></a><span class="co"># cleanup</span></span>
+<span id="cb18-59"><a href="#cb18-59" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(installed, install)</span>
+<span id="cb18-60"><a href="#cb18-60" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-61"><a href="#cb18-61" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-62"><a href="#cb18-62" aria-hidden="true" tabindex="-1"></a><span class="fu"># Project Overview</span></span>
+<span id="cb18-63"><a href="#cb18-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-64"><a href="#cb18-64" aria-hidden="true" tabindex="-1"></a>We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis  will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.</span>
+<span id="cb18-65"><a href="#cb18-65" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-66"><a href="#cb18-66" aria-hidden="true" tabindex="-1"></a><span class="fu"># Load Data</span></span>
+<span id="cb18-67"><a href="#cb18-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-68"><a href="#cb18-68" aria-hidden="true" tabindex="-1"></a><span class="fu">## Main Dataset</span></span>
+<span id="cb18-69"><a href="#cb18-69" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-70"><a href="#cb18-70" aria-hidden="true" tabindex="-1"></a>Load data_pred, and data_gnrc_100 datasets</span>
+<span id="cb18-71"><a href="#cb18-71" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-74"><a href="#cb18-74" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-75"><a href="#cb18-75" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: load prediction datasets</span></span>
+<span id="cb18-76"><a href="#cb18-76" aria-hidden="true" tabindex="-1"></a><span class="co"># load data_pred and data_gnrc_100 if not already in the environment:</span></span>
+<span id="cb18-77"><a href="#cb18-77" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">exists</span>(<span class="st">"data_pred"</span>)) {</span>
+<span id="cb18-78"><a href="#cb18-78" aria-hidden="true" tabindex="-1"></a>  <span class="fu">load</span>(<span class="st">"dataset/data_pred.RData"</span>)</span>
+<span id="cb18-79"><a href="#cb18-79" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb18-80"><a href="#cb18-80" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">exists</span>(<span class="st">"data_gnrc_100"</span>)) {</span>
+<span id="cb18-81"><a href="#cb18-81" aria-hidden="true" tabindex="-1"></a>  <span class="fu">load</span>(<span class="st">"dataset/data_gnrc_100.RData"</span>)</span>
+<span id="cb18-82"><a href="#cb18-82" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb18-83"><a href="#cb18-83" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-84"><a href="#cb18-84" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-85"><a href="#cb18-85" aria-hidden="true" tabindex="-1"></a><span class="fu">## Geography/Drug data</span></span>
+<span id="cb18-86"><a href="#cb18-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-87"><a href="#cb18-87" aria-hidden="true" tabindex="-1"></a>Recall that this dataset aggregates Part D prescribing data by year, drug and state.  The data dictionary can be found <span class="co">[</span><span class="ot">here</span><span class="co">](https://data.cms.gov/resources/medicare-part-d-prescribers-by-geography-and-drug-data-dictionary)</span>.</span>
+<span id="cb18-88"><a href="#cb18-88" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-91"><a href="#cb18-91" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-92"><a href="#cb18-92" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: load geo data</span></span>
+<span id="cb18-93"><a href="#cb18-93" aria-hidden="true" tabindex="-1"></a><span class="co"># initialize 'geo' as an empty daraframe:</span></span>
+<span id="cb18-94"><a href="#cb18-94" aria-hidden="true" tabindex="-1"></a>geo <span class="ot">&lt;-</span> <span class="fu">data.frame</span>()</span>
+<span id="cb18-95"><a href="#cb18-95" aria-hidden="true" tabindex="-1"></a><span class="co"># load the data iteratively by year:</span></span>
+<span id="cb18-96"><a href="#cb18-96" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (year <span class="cf">in</span> <span class="dv">2013</span><span class="sc">:</span><span class="dv">2021</span>) {</span>
+<span id="cb18-97"><a href="#cb18-97" aria-hidden="true" tabindex="-1"></a>  data_year <span class="ot">&lt;-</span> <span class="fu">read_fst</span>(</span>
+<span id="cb18-98"><a href="#cb18-98" aria-hidden="true" tabindex="-1"></a>    <span class="fu">paste0</span>(<span class="st">"data/geo/"</span>, year, <span class="st">".fst"</span>))</span>
+<span id="cb18-99"><a href="#cb18-99" aria-hidden="true" tabindex="-1"></a>  <span class="co"># set the year variable</span></span>
+<span id="cb18-100"><a href="#cb18-100" aria-hidden="true" tabindex="-1"></a>  data_year<span class="sc">$</span>year <span class="ot">&lt;-</span> year</span>
+<span id="cb18-101"><a href="#cb18-101" aria-hidden="true" tabindex="-1"></a>  <span class="co"># append the data to the 'geo' dataframe:</span></span>
+<span id="cb18-102"><a href="#cb18-102" aria-hidden="true" tabindex="-1"></a>  geo <span class="ot">&lt;-</span> <span class="fu">rbind</span>(geo, data_year)</span>
+<span id="cb18-103"><a href="#cb18-103" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb18-104"><a href="#cb18-104" aria-hidden="true" tabindex="-1"></a><span class="co"># cleanup</span></span>
+<span id="cb18-105"><a href="#cb18-105" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(year, data_year)</span>
+<span id="cb18-106"><a href="#cb18-106" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-107"><a href="#cb18-107" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-108"><a href="#cb18-108" aria-hidden="true" tabindex="-1"></a><span class="fu">## NDC Data</span></span>
+<span id="cb18-109"><a href="#cb18-109" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-110"><a href="#cb18-110" aria-hidden="true" tabindex="-1"></a>This .csv file was generated from the FDA <span class="co">[</span><span class="ot">National Drug Code Directory</span><span class="co">](https://www.accessdata.fda.gov/scripts/cder/ndc/index.cfm)</span> by searching for 'buprenorphine' within the nonproprietary name field.</span>
+<span id="cb18-111"><a href="#cb18-111" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-114"><a href="#cb18-114" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-115"><a href="#cb18-115" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: load NDC data</span></span>
+<span id="cb18-116"><a href="#cb18-116" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">exists</span>(<span class="st">"bup_ndcs"</span>)) {</span>
+<span id="cb18-117"><a href="#cb18-117" aria-hidden="true" tabindex="-1"></a>bup_ndcs <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"data/bup_NDCs.csv"</span>)</span>
+<span id="cb18-118"><a href="#cb18-118" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb18-119"><a href="#cb18-119" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-120"><a href="#cb18-120" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-121"><a href="#cb18-121" aria-hidden="true" tabindex="-1"></a><span class="fu"># Exploratory Analysis</span></span>
+<span id="cb18-122"><a href="#cb18-122" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-123"><a href="#cb18-123" aria-hidden="true" tabindex="-1"></a><span class="fu">## Examine NDCs/Products</span></span>
+<span id="cb18-124"><a href="#cb18-124" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-125"><a href="#cb18-125" aria-hidden="true" tabindex="-1"></a>Products mapping to 'buprenorphine':</span>
+<span id="cb18-126"><a href="#cb18-126" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-129"><a href="#cb18-129" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-130"><a href="#cb18-130" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: examine buprenorphine products</span></span>
+<span id="cb18-131"><a href="#cb18-131" aria-hidden="true" tabindex="-1"></a>bup_ndcs <span class="sc">|&gt;</span></span>
+<span id="cb18-132"><a href="#cb18-132" aria-hidden="true" tabindex="-1"></a>  <span class="co">#filter by proprietary name contains exactly 'buprenorphine'</span></span>
+<span id="cb18-133"><a href="#cb18-133" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">str_detect</span>(<span class="st">`</span><span class="at">Substance Name</span><span class="st">`</span>, <span class="st">"BUPRENORPHINE$"</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb18-134"><a href="#cb18-134" aria-hidden="true" tabindex="-1"></a>  <span class="co"># select relevant columns including brand name, generic, substance, route, dosage form, package description:</span></span>
+<span id="cb18-135"><a href="#cb18-135" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="st">`</span><span class="at">Proprietary Name</span><span class="st">`</span>, <span class="st">`</span><span class="at">Nonproprietary Name</span><span class="st">`</span>, <span class="st">`</span><span class="at">Dosage Form</span><span class="st">`</span>, <span class="st">`</span><span class="at">Route</span><span class="st">`</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-136"><a href="#cb18-136" aria-hidden="true" tabindex="-1"></a>  <span class="co"># display only unique rows</span></span>
+<span id="cb18-137"><a href="#cb18-137" aria-hidden="true" tabindex="-1"></a>  <span class="fu">unique</span>() <span class="sc">|&gt;</span></span>
+<span id="cb18-138"><a href="#cb18-138" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">100</span>)</span>
+<span id="cb18-139"><a href="#cb18-139" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-140"><a href="#cb18-140" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-141"><a href="#cb18-141" aria-hidden="true" tabindex="-1"></a>Products mapping to 'buprenorphine hcl':</span>
+<span id="cb18-142"><a href="#cb18-142" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-145"><a href="#cb18-145" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-146"><a href="#cb18-146" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: examine buprenorphine hcl products</span></span>
+<span id="cb18-147"><a href="#cb18-147" aria-hidden="true" tabindex="-1"></a>bup_ndcs <span class="sc">|&gt;</span></span>
+<span id="cb18-148"><a href="#cb18-148" aria-hidden="true" tabindex="-1"></a>  <span class="co">#filter by proprietary name contains exactly 'buprenorphine'</span></span>
+<span id="cb18-149"><a href="#cb18-149" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">str_detect</span>(<span class="st">`</span><span class="at">Substance Name</span><span class="st">`</span>, <span class="st">"BUPRENORPHINE HYDROCHLORIDE$"</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb18-150"><a href="#cb18-150" aria-hidden="true" tabindex="-1"></a>  <span class="co"># select relevant columns including brand name, generic, substance, route, dosage form, package description:</span></span>
+<span id="cb18-151"><a href="#cb18-151" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="st">`</span><span class="at">Proprietary Name</span><span class="st">`</span>, <span class="st">`</span><span class="at">Nonproprietary Name</span><span class="st">`</span>, <span class="st">`</span><span class="at">Dosage Form</span><span class="st">`</span>, <span class="st">`</span><span class="at">Route</span><span class="st">`</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-152"><a href="#cb18-152" aria-hidden="true" tabindex="-1"></a>  <span class="co"># display only unique rows</span></span>
+<span id="cb18-153"><a href="#cb18-153" aria-hidden="true" tabindex="-1"></a>  <span class="fu">unique</span>() <span class="sc">|&gt;</span></span>
+<span id="cb18-154"><a href="#cb18-154" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">100</span>)</span>
+<span id="cb18-155"><a href="#cb18-155" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-156"><a href="#cb18-156" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-157"><a href="#cb18-157" aria-hidden="true" tabindex="-1"></a>Products mapping to 'buprenorphine hcl/naloxone hcl':</span>
+<span id="cb18-158"><a href="#cb18-158" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-161"><a href="#cb18-161" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-162"><a href="#cb18-162" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: examine buprenorphine-naloxone products</span></span>
+<span id="cb18-163"><a href="#cb18-163" aria-hidden="true" tabindex="-1"></a>bup_ndcs <span class="sc">|&gt;</span></span>
+<span id="cb18-164"><a href="#cb18-164" aria-hidden="true" tabindex="-1"></a>  <span class="co">#filter by proprietary name contains exactly 'buprenorphine'</span></span>
+<span id="cb18-165"><a href="#cb18-165" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">str_detect</span>(<span class="st">`</span><span class="at">Substance Name</span><span class="st">`</span>, <span class="st">"BUPRENORPHINE"</span>) <span class="sc">&amp;</span></span>
+<span id="cb18-166"><a href="#cb18-166" aria-hidden="true" tabindex="-1"></a>           <span class="fu">str_detect</span>(<span class="st">`</span><span class="at">Substance Name</span><span class="st">`</span>, <span class="st">"NALOXONE"</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb18-167"><a href="#cb18-167" aria-hidden="true" tabindex="-1"></a>  <span class="co"># select relevant columns including brand name, generic, substance, route, dosage form, package description:</span></span>
+<span id="cb18-168"><a href="#cb18-168" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(<span class="st">`</span><span class="at">Proprietary Name</span><span class="st">`</span>, <span class="st">`</span><span class="at">Nonproprietary Name</span><span class="st">`</span>, <span class="st">`</span><span class="at">Dosage Form</span><span class="st">`</span>, <span class="st">`</span><span class="at">Route</span><span class="st">`</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-169"><a href="#cb18-169" aria-hidden="true" tabindex="-1"></a>  <span class="co"># display only unique rows</span></span>
+<span id="cb18-170"><a href="#cb18-170" aria-hidden="true" tabindex="-1"></a>  <span class="fu">unique</span>() <span class="sc">|&gt;</span></span>
+<span id="cb18-171"><a href="#cb18-171" aria-hidden="true" tabindex="-1"></a>  <span class="fu">head</span>(<span class="dv">100</span>)</span>
+<span id="cb18-172"><a href="#cb18-172" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-173"><a href="#cb18-173" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-174"><a href="#cb18-174" aria-hidden="true" tabindex="-1"></a>From these results we can confrim that the CMS aggregation by brand name is not sufficient to differentiate buprenorphine products used for OUD vs pain; and in particular that the SL tablets (for OUD, previously sold as Subutex) map to 'Buprenorphine HCl' and to 'Buprenorphine', whereas buprenorphine hcl for IM/IV injection (previously sold as Buprenex) maps to 'Buprenorphine HCl', and buprenorphine ER (for pain, previously sold as Butrans) patch maps to 'Buprenorphine'.</span>
+<span id="cb18-175"><a href="#cb18-175" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-176"><a href="#cb18-176" aria-hidden="true" tabindex="-1"></a><span class="fu">## Examine geo data</span></span>
+<span id="cb18-177"><a href="#cb18-177" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-180"><a href="#cb18-180" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-181"><a href="#cb18-181" aria-hidden="true" tabindex="-1"></a><span class="co">#| label: examine geo data</span></span>
+<span id="cb18-182"><a href="#cb18-182" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-183"><a href="#cb18-183" aria-hidden="true" tabindex="-1"></a><span class="co"># map total claims for buprenorphine by state using stateMap()</span></span>
+<span id="cb18-184"><a href="#cb18-184" aria-hidden="true" tabindex="-1"></a>geo_test <span class="ot">&lt;-</span> geo <span class="sc">|&gt;</span></span>
+<span id="cb18-185"><a href="#cb18-185" aria-hidden="true" tabindex="-1"></a>  <span class="co"># exclude national level entries</span></span>
+<span id="cb18-186"><a href="#cb18-186" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span>Prscrbr_Geo_Desc <span class="sc">==</span> <span class="st">"National"</span>) <span class="sc">|&gt;</span></span>
+<span id="cb18-187"><a href="#cb18-187" aria-hidden="true" tabindex="-1"></a>  <span class="co"># filter to generic names containing 'Buprenorphine'</span></span>
+<span id="cb18-188"><a href="#cb18-188" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="fu">grepl</span>(<span class="st">"Buprenorphine"</span>, Gnrc_Name)) <span class="sc">|&gt;</span></span>
+<span id="cb18-189"><a href="#cb18-189" aria-hidden="true" tabindex="-1"></a>  <span class="co"># rename Prscrbr_Geo_Desc to 'stateCode'</span></span>
+<span id="cb18-190"><a href="#cb18-190" aria-hidden="true" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">mutate</span>(<span class="at">stateCode =</span> <span class="fu">stateToCode</span>(Prscrbr_Geo_Desc)) <span class="sc">|&gt;</span></span>
+<span id="cb18-191"><a href="#cb18-191" aria-hidden="true" tabindex="-1"></a>  <span class="co"># group by year and state</span></span>
+<span id="cb18-192"><a href="#cb18-192" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(year, stateCode) <span class="sc">|&gt;</span></span>
+<span id="cb18-193"><a href="#cb18-193" aria-hidden="true" tabindex="-1"></a>  <span class="co"># summarize total claims</span></span>
+<span id="cb18-194"><a href="#cb18-194" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarize</span>(</span>
+<span id="cb18-195"><a href="#cb18-195" aria-hidden="true" tabindex="-1"></a>    <span class="at">Bup_Clms =</span> <span class="fu">sum</span>(Tot_Clms)</span>
+<span id="cb18-196"><a href="#cb18-196" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb18-197"><a href="#cb18-197" aria-hidden="true" tabindex="-1"></a>  <span class="co"># plot using stateMap()</span></span>
+<span id="cb18-198"><a href="#cb18-198" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stateMap</span>(</span>
+<span id="cb18-199"><a href="#cb18-199" aria-hidden="true" tabindex="-1"></a>    <span class="at">parameter =</span> <span class="st">"Bup_Clms"</span>,</span>
+<span id="cb18-200"><a href="#cb18-200" aria-hidden="true" tabindex="-1"></a>    <span class="at">palette =</span> viridisLite<span class="sc">::</span><span class="fu">viridis</span>(<span class="dv">20</span>),</span>
+<span id="cb18-201"><a href="#cb18-201" aria-hidden="true" tabindex="-1"></a>    <span class="at">stateBorderColor =</span> <span class="st">'black'</span>,</span>
+<span id="cb18-202"><a href="#cb18-202" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Total Buprenorphine Claims by State"</span></span>
+<span id="cb18-203"><a href="#cb18-203" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb18-204"><a href="#cb18-204" aria-hidden="true" tabindex="-1"></a>geo_test</span>
+<span id="cb18-205"><a href="#cb18-205" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-206"><a href="#cb18-206" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-209"><a href="#cb18-209" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-210"><a href="#cb18-210" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-211"><a href="#cb18-211" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-212"><a href="#cb18-212" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-213"><a href="#cb18-213" aria-hidden="true" tabindex="-1"></a><span class="fu"># Missing Data</span></span>
+<span id="cb18-214"><a href="#cb18-214" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-215"><a href="#cb18-215" aria-hidden="true" tabindex="-1"></a>First we will look at missing values in the data for key variables including 'Tot_Clms', 'Tot_Day_Suply', 'Tot_Benes', and using the 'random_fips' variable to identify missing values by county. We will initially look at the totals for the full dataset, and then break down these values by year, by drug, and by prescriber type.</span>
+<span id="cb18-216"><a href="#cb18-216" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-217"><a href="#cb18-217" aria-hidden="true" tabindex="-1"></a><span class="fu">## Geographic MAT Prescribing Patterns</span></span>
+<span id="cb18-218"><a href="#cb18-218" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-219"><a href="#cb18-219" aria-hidden="true" tabindex="-1"></a>The data can be plotted according to FIPS code using <span class="in">`ggplot2`</span> or <span class="in">`MazamaSpatialPlots`</span> packages.</span>
+<span id="cb18-220"><a href="#cb18-220" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-221"><a href="#cb18-221" aria-hidden="true" tabindex="-1"></a><span class="fu">### Buprenorphine</span></span>
+<span id="cb18-222"><a href="#cb18-222" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-223"><a href="#cb18-223" aria-hidden="true" tabindex="-1"></a><span class="fu">### Methadone</span></span>
+<span id="cb18-224"><a href="#cb18-224" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-225"><a href="#cb18-225" aria-hidden="true" tabindex="-1"></a><span class="fu">### Naltrexone</span></span>
+<span id="cb18-226"><a href="#cb18-226" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-227"><a href="#cb18-227" aria-hidden="true" tabindex="-1"></a><span class="fu">## Causal Discovery?</span></span>
+<span id="cb18-228"><a href="#cb18-228" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-229"><a href="#cb18-229" aria-hidden="true" tabindex="-1"></a><span class="fu"># Other Thoughts</span></span>
+<span id="cb18-230"><a href="#cb18-230" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-231"><a href="#cb18-231" aria-hidden="true" tabindex="-1"></a>Indication for OUD use is a potential source of error when assessing prescriptions for buprenorphine and methadone. Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):</span>
+<span id="cb18-232"><a href="#cb18-232" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-233"><a href="#cb18-233" aria-hidden="true" tabindex="-1"></a><span class="ss">-   </span>Query <span class="co">[</span><span class="ot">FDA NDC DB</span><span class="co">](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/)</span> for NPIs associated with the values of <span class="in">`Brnd_Name`</span> and <span class="in">`Gnrc_Name`</span> which were matched above, then search those NDCs for the indication for use on DailyMed</span>
+<span id="cb18-234"><a href="#cb18-234" aria-hidden="true" tabindex="-1"></a><span class="ss">-   </span>Check DEA X waver for prescriber's NPI</span>
+<span id="cb18-235"><a href="#cb18-235" aria-hidden="true" tabindex="-1"></a><span class="ss">-   </span>Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed</span>
+<span id="cb18-236"><a href="#cb18-236" aria-hidden="true" tabindex="-1"></a><span class="ss">-   </span>Check prescriber's place of work in NPI DB</span>
+<span id="cb18-237"><a href="#cb18-237" aria-hidden="true" tabindex="-1"></a><span class="ss">-   </span>interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names</span>
+<span id="cb18-238"><a href="#cb18-238" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-239"><a href="#cb18-239" aria-hidden="true" tabindex="-1"></a><span class="fu"># Unused Code</span></span>
+<span id="cb18-240"><a href="#cb18-240" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-243"><a href="#cb18-243" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-244"><a href="#cb18-244" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+<span id="cb18-245"><a href="#cb18-245" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-246"><a href="#cb18-246" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-247"><a href="#cb18-247" aria-hidden="true" tabindex="-1"></a><span class="fu"># Session Info</span></span>
+<span id="cb18-248"><a href="#cb18-248" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb18-251"><a href="#cb18-251" aria-hidden="true" tabindex="-1"></a><span class="in">```{r}</span></span>
+<span id="cb18-252"><a href="#cb18-252" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
+<span id="cb18-253"><a href="#cb18-253" aria-hidden="true" tabindex="-1"></a><span class="in">```</span></span>
+</code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div></div></div></div></div>
+</div> <!-- /content -->
+
+
+
+</body></html>
