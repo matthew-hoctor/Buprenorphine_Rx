@@ -1,0 +1,1385 @@
+---
+title: "Dataset"
+author: "Matthew Hoctor, PharmD"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
+quarto::html_document:
+  theme: cerulean
+  highlight: github
+  
+toc: true
+toc-depth: 4
+toc-location: left
+toc-title: Contents
+  
+code-fold: show
+code-overflow: wrap
+code-tools: true
+code-link: true
+
+editor: source
+---
+
+```{r setup, include = FALSE}
+# load libraries:
+library(tidyverse)
+library(data.table)
+# library(lubridate)
+library(readxl)
+library(readODS)
+library(campfin)
+# library(httr2)        #using bash curl instead
+# library(curl)         #using bash curl instead
+# library(jsonlite)     #fromJSON and other json functions
+```
+
+# Overview
+
+We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis will download and compile medicare part D data before and after the legislation for years 2013-2021, and will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.
+
+# Downloading Medicare Part D Data
+
+This analysis does not require individual-patient-level data, and thus does not require the Research Identifiable Files (RIFs) or Limited Data Set (LDS) files; non-identifiable files will be used instead. Datasets from 2013-2021 from the [Medicare Part D Prescribers - by Provider and Drug](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider-and-drug) dataset was downloaded and moved to the `data` folder of the project ([data dict](https://data.cms.gov/resources/medicare-part-d-prescribers-by-provider-and-drug-data-dictionary)). It may be necessary to add info from the [Medicare Part D Prescribers - by Provider](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-provider) dataset if more provider info is needed; it may be interesting to look at [Medicare Part D Prescribers - by Geography and Drug Data Dictionary](https://data.cms.gov/provider-summary-by-type-of-service/medicare-part-d-prescribers/medicare-part-d-prescribers-by-geography-and-drug) ([data dict](https://data.cms.gov/resources/medicare-part-d-prescribers-by-geography-and-drug-data-dictionary)) later.
+
+See the [data download](https://matthew-hoctor.github.io/Buprenorphine_Rx/data_download.html) page for specifics.
+
+NB manually downloading datasets from data.cms.gov only seems to work when the ancillary files are not downloaded as well.
+
+# Importing & Merging Data
+
+We will begin with the 2021 data while the rest of the datasets download.
+
+## 2021 Test Run
+
+### Dataset
+
+Test read of manually downloaded 2021 data:
+
+```{r}
+data_2021 <- read.csv("data/2021.csv")
+```
+
+Check:
+
+```{r}
+glimpse(data_2021)
+head(data_2021)
+```
+
+This confirms that the data is in the correct format and that the data download was successful.  We can now create the variables of interest.  Assign `year` variable to 2021 data and create the main dataset, `data`:
+
+```{r}
+data_2021$year <- 2021
+```
+
+### Treatment Variables
+
+The variable for medication assisted treatment (MAT) is `MAT`, which will be a polytomous variable with the following levels: `bup` for buprenorphine, `met` for methadone, and `nal` for naltrexone.
+
+The following R code chunk uses the `stringr` package to find all values of the `Gnrc_Name` variable that contain the string "buprenorphine" and assigns the value `bup` to the `MAT_generic` variable for those rows:
+
+```{r}
+data_2021$MAT_generic <- ifelse(
+  str_detect(data_2021$Gnrc_Name, regex("bupre", ignore_case = TRUE)),
+  "bup", 
+  NA)
+# to test the variable encoding we will table all of the values of `Gnrc_Name which were matched above:
+table(data_2021$Gnrc_Name[data_2021$MAT_generic == "bup"])
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "bup"])
+
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "bup"], data_2021$Gnrc_Name[data_2021$MAT_generic == "bup"])|>
+  # add a row for totals
+  addmargins(margin = 1)
+```
+
+We also want to search for brand names of buprenorphine products.  The following R code chunk uses the `stringr` package to find all values of the `Brnd_Name` variable that contain the strings matching any of the brand names of buprenorphine products and assigns the value `bup` to the `MAT_brand` variable for those rows:
+
+```{r}
+bup_brands <- c("Belbuca", "Bunavail", "Buprenex", "Buprenorphine", "Butrans", "Probuphine", "Sublocade", "Suboxone", "Subutex", "Zubsolv")
+#next we will need to concatinate the strings in the `bup_brands` vector into a single string separated by the `|` character, which is the regex "or" operator:
+bup_brands_pattern <- paste(bup_brands, collapse = "|")
+
+data_2021$MAT_brand <- ifelse(
+  str_detect(data_2021$Brnd_Name, regex(bup_brands_pattern, ignore_case = TRUE)),
+  "bup", 
+  NA)
+```
+
+To validate the encoding of the `MAT_brand` variable, we will table all of the values of `Brnd_Name` which were matched above, and table all of the entries where `MAT_brand` was matched vs entries where `MAT_generic` was matched:
+
+```{r}
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "bup"])
+#this produces an identical table to the one above
+#as an extra precaution we will cross-tabulate the two variables:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "bup"], data_2021$Brnd_Name[data_2021$MAT_generic == "bup"])
+```
+
+We will now sort each observation according to treatment intention, and assign values to the `tx` variable.  Entries in which buprenorphine was used to treat OUD will be assigned `bup_oud`, entries in which buprenorphine was used to treat pain will be assigned `bup_pain`.  Products indicated for OUD include Sublocade, Brixadi (not available during the years studied), all forms of Buprenorphine Hcl/Naloxone Hcl (Suboxone, Zubsolv, Bunavail, Cassipa, and generic), and Buprenorphine HCl (sublingual, NB that that certain NDCs of this product are reported only as 'Buprenorphine' for the brand and generic names); whereas products indicated for pain include Belbuca (buprenorphine HCl buccal), Buprenex, Butrans, Probuphine (implant, discontinued), generic buprenorphine HCl (parenteral), and generic buprenorphine transdermal patches.  Thus, in the `Brnd_Name` vs `Gnrc_Name` cross-tabulation above, we see that two entries are possibly ambiguous, those in which both variables have the value `Buprenorphine` (which could be generic buprenorphine transdermal patches [pain] or buprenorphine HCl sublingual tablets [OUD]), and those in which both variables have the variable `Buprenorphine HCl` (which could be parenteral buprenorphine HCl [pain], or buprenorphine HCl sublingual tablets [OUD]).  Given that usage of buprenorphine for pain is not common practice in the U.S., we will assume that these ambiguous entries are for OUD, and will generate the `tx` variable by recoding the `Brnd_Name` variable:
+
+```{r}
+# using the tidyverse standard function case_when:
+data_2021$tx <- case_match(
+  data_2021$Brnd_Name,
+  c("Bunavail", "Buprenorphine", "Buprenorphine Hcl", "Buprenorphine-Naloxone", "Sublocade", "Suboxone", "Subutex", "Zubsolv") ~ "bup_oud",
+  c("Belbuca", "Buprenex", "Butrans", "Probuphine") ~ "bup_pain",
+  .default = NA
+)
+# validate encoding by cross tabulating `tx` vs `Brnd_Name`:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "bup"], data_2021$tx[data_2021$MAT_brand == "bup"]) |>
+  # add a row for totals for bup_oud and bup_pain:
+  addmargins(margin = 1)
+```
+
+We can now repeat this process for methadone:
+
+```{r}
+data_2021$MAT_generic <- ifelse(
+  str_detect(data_2021$Gnrc_Name, regex("methad", ignore_case = TRUE)),
+  "met", 
+  data_2021$MAT_generic)
+# to test the variable encoding we will table all of the values of `Gnrc_Name which were matched above:
+table(data_2021$Gnrc_Name[data_2021$MAT_generic == "met"])
+# table `Brnd_Name`:
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "met"])
+# as above with buprenorphine we will construct a vector of methadone brand names:
+met_brands <- c("Dolophine", "Methadone", "Methadose")  #NB "Methadone Diskets", "Methadone Intensol" will match with "Methadone"
+# and construct a regex pattern:
+met_brands_pattern <- paste(met_brands, collapse = "|")
+# and assign the `met` value to the `MAT_brand` variable:
+data_2021$MAT_brand <- ifelse(
+  str_detect(
+    data_2021$Brnd_Name, 
+    regex(met_brands_pattern, ignore_case = TRUE)),
+    "met", 
+    data_2021$MAT_brand)
+# validate:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "met"])
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "met"], data_2021$Gnrc_Name[data_2021$MAT_generic == "met"])
+```
+
+We will now sort each observation according to treatment intention, and assign values to the `tx` variable.  Entries in which methadone was used to treat OUD will be assigned `met_oud`, entries in which methadone was used to treat pain will be assigned `met_pain`.  Products indicated for OUD include Dolophine (methadone HCl oral concentrate), Methadone HCl (oral concentrate, oral solution, oral tablet), Methadose (oral concentrate, oral solution, oral tablet), and generic methadone HCl (oral concentrate, oral solution, oral tablet); whereas products indicated for pain include generic methadone HCl (parenteral), Dolophine and Methadone Intensol.  Thus, in the `Brnd_Name` vs `Gnrc_Name` cross-tabulation above, we see that two entries are possibly ambiguous, those in which both variables have the value `Methadone HCl` (which could be parenteral methadone HCl [pain], or methadone HCl oral concentrate, oral solution, Dolophine, or oral tablet [OUD]).  Given that usage of methadone for pain is not common practice in the U.S., we will assume that these ambiguous entries are for OUD, and will generate the `tx` variable by recoding the `Brnd_Name` variable:
+
+```{r}
+data_2021$tx <- case_match(
+  data_2021$Brnd_Name,
+  c("Methadone Hcl", "Methadose") ~ "met_oud",
+  c("Dolophine", "Methadone Diskets", "Methadone Intensol") ~ "met_pain",
+  .default = data_2021$tx
+)
+# validate by tabling `tx` against `Brnd_Name` for entries where MAT_generic == "met":
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "met"], data_2021$tx[data_2021$MAT_generic == "met"])
+```
+
+Repeating for naltrexone:
+
+```{r}
+data_2021$MAT_generic <- ifelse(
+  str_detect(data_2021$Gnrc_Name, regex("naltrex", ignore_case = TRUE)) 
+  & !str_detect(data_2021$Gnrc_Name, regex("Methylnaltrexone", ignore_case = TRUE))  # filter out methylnaltrexone
+  & !str_detect(data_2021$Gnrc_Name, regex("Bupropion", ignore_case = TRUE)),        # filter out Contrave
+  "nal", 
+  data_2021$MAT_generic)
+```
+
+Testing the above encoding:
+
+```{r}
+# to test the variable encoding we will table all of the values of `Gnrc_Name which were matched above:
+table(data_2021$Gnrc_Name[data_2021$MAT_generic == "nal"])
+# and table the brand names:
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "nal"])
+# crosstabulate
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "nal"], data_2021$Gnrc_Name[data_2021$MAT_generic == "nal"])
+```
+
+Checking against brand names:
+
+```{r}
+#as above with buprenorphine we will construct a vector of naltrexone brand names:
+nal_brands <- c("Depade", "Naltrexone", "Revia", "Vivitrol")
+# and construct a regex pattern:
+nal_brands_pattern <- paste(nal_brands, collapse = "|")
+# and assign the `nal` value to the `MAT_brand` variable:
+data_2021$MAT_brand <- ifelse(
+  str_detect(
+    data_2021$Brnd_Name, 
+    regex(nal_brands_pattern, ignore_case = TRUE)),
+    "nal", 
+    data_2021$MAT_brand
+  )
+# validate:
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "nal"])
+table(data_2021$Brnd_Name[data_2021$MAT_brand == "nal"], data_2021$Gnrc_Name[data_2021$MAT_brand == "nal"])
+```
+
+Unfortunately there is no way to distinguish between naltrexone for OUD and naltrexone for alcohol use disorder (AUD) using the current dataset.  We will assume that all naltrexone prescriptions are for OUD, and will generate the `tx` variable by recoding the `Brnd_Name` variable:
+
+```{r}
+data_2021$tx <- case_match(
+  data_2021$Brnd_Name,
+  c("Depade", "Naltrexone", "Revia", "Vivitrol", "Naltrexone Hcl", "Naltrexone Microspheres") ~ "nal_oud",
+  .default = data_2021$tx
+)
+# validate by tabling `tx` against `Brnd_Name` for entries where MAT_generic == "nal":
+table(data_2021$Brnd_Name[data_2021$MAT_generic == "nal"], data_2021$tx[data_2021$MAT_generic == "nal"])
+```
+
+As a summary of the `tx` variable, we will tabulate the number of entries for each treatment intention:
+
+```{r}
+table(data_2021$Brnd_Name[!is.na(data_2021$MAT_generic)],
+      data_2021$tx[!is.na(data_2021$MAT_generic)]) |>
+  addmargins(margin = 1)
+```
+
+Lastly we will create a new dataset to work with using only entries corresponding to the three MAT drugs:
+
+```{r}
+data_2021_tx <- data_2021[!is.na(data_2021$tx), ]
+#verify the new dataset by tabulating tx vs brand names as above:
+table(data_2021_tx$Brnd_Name, data_2021_tx$tx) |>
+  addmargins(margin = 1)
+```
+
+## Treatment Variable
+
+### Treatment Function
+
+We will now create a function to generate the treatment variable, `tx` for each year of data.  For this function we will use the `dataset` argument to refer to the dataset to be processed, and `data` to refer to the data to be returned.  We will generate the `tx` variable, and will also generate `MAT_generic~ and `MAT_brand` to serve as a check on the `tx` variable.  The dataset returned will only include entries for which any of these three variables are not NA:
+
+```{r}
+# create a function to process the data:
+treatment <- function(data_year, bup_brands_pattern = NULL, met_brands_pattern = NULL, nal_brands_pattern = NULL) {
+  # create the MAT_generic variable for buprenorphine:
+  data_year$MAT_generic <- ifelse(
+    str_detect(
+      data_year$Gnrc_Name, 
+      regex("bupre", ignore_case = TRUE)),
+    "bup", 
+    NA)
+  
+  # create the MAT_brand variable for buprenorphine:
+  # if `bup_brands_pattern` not supplied as an argument, starting by creating a vector of buprenorphine brand names and concatinating to regex:
+  if (is.null(bup_brands_pattern)) {
+    bup_brands <- c("Belbuca", "Bunavail", "Buprenex", "Buprenorphine", "Butrans", "Probuphine", "Sublocade", "Suboxone", "Subutex", "Zubsolv")
+    bup_brands_pattern <- paste(bup_brands, collapse = "|")
+  }
+  # assign the MAT_brand value based on the regex:
+  data_year$MAT_brand <- ifelse(
+    str_detect(
+      data_year$Brnd_Name, 
+      regex(bup_brands_pattern, ignore_case = TRUE)),
+    "bup", 
+    NA)
+  
+  # create the MAT_generic variable for methadone:
+  data_year$MAT_generic <- ifelse(
+    str_detect(
+      data_year$Gnrc_Name, 
+      regex("methad", ignore_case = TRUE)),
+    "met", 
+    data_year$MAT_generic)
+  
+  # create the MAT_brand variable for methadone:
+  # if `met_brands_pattern` not supplied as an argument, starting by creating a vector of methadone brand names and concatinating to regex:
+  if (is.null(met_brands_pattern)) {
+    met_brands <- c("Dolophine", "Methadone", "Methadose", "Diskets")
+    met_brands_pattern <- paste(met_brands, collapse = "|")
+  }
+  # assign the MAT_brand value:
+  data_year$MAT_brand <- ifelse(
+    str_detect(
+      data_year$Brnd_Name, 
+      regex(met_brands_pattern, ignore_case = TRUE)),
+    "met", 
+    data_year$MAT_brand)
+  
+  # create the MAT_generic variable for naltrexone:
+  data_year$MAT_generic <- ifelse(
+    str_detect(
+      data_year$Gnrc_Name, 
+      regex("naltrex", ignore_case = TRUE))
+      & !str_detect(data_year$Gnrc_Name, regex("Methylnaltrexone", ignore_case = TRUE))  # filter out methylnaltrexone
+      & !str_detect(data_year$Gnrc_Name, regex("Bupropion", ignore_case = TRUE))         # filter out Contrave
+      & !str_detect(data_year$Brnd_Name, regex("Embeda", ignore_case = TRUE)),           # filter out Embeda
+    "nal", 
+    data_year$MAT_generic)
+  
+  # create the MAT_brand variable for naltrexone:
+  # if `nal_brands_pattern` not supplied as an argument, starting by creating a vector of naltrexone brand names and concatinating to regex:
+  if (is.null(nal_brands_pattern)) {
+    nal_brands <- c("Depade", "Naltrexone", "Revia", "Vivitrol")
+    nal_brands_pattern <- paste(nal_brands, collapse = "|")
+  }
+  # assign the MAT_brand value:
+  data_year$MAT_brand <- ifelse(
+    str_detect(
+      data_year$Brnd_Name, 
+      regex(nal_brands_pattern, ignore_case = TRUE)),
+    "nal", 
+    data_year$MAT_brand)
+  
+  # create the tx variable using `case_match` as above:
+data_year$tx <- case_match(
+  data_year$Brnd_Name,
+    c("Bunavail", "Buprenorphine", "Buprenorphine Hcl", "Buprenorphine-Naloxone", "Sublocade", "Suboxone", "Subutex", "Zubsolv") ~ "bup_oud",
+    c("Belbuca", "Buprenex", "Butrans", "Probuphine") ~ "bup_pain",
+    c("Methadone Hcl", "Methadose", "Dolophine Hcl", "Diskets") ~ "met_oud",
+    c("Methadone Diskets", "Methadone Intensol") ~ "met_pain",
+    c("Depade", "Naltrexone", "Revia", "Vivitrol", "Naltrexone Hcl", "Naltrexone Microspheres") ~ "nal_oud",
+    .default = NA
+)
+  
+# return the dataset limited to observations with a value in at least one of the MAT variables or the tx variable:
+  return(data_year[!is.na(data_year$MAT_generic) | !is.na(data_year$MAT_brand) | !is.na(data_year$tx), ])
+}
+```
+
+To test the function we will use the 2013 data:
+
+```{r}
+##| cache: true
+# load the 2013 data:
+data_2013 <- read_csv("data/2013.csv")
+
+data_tx <- treatment(data_2013)
+```
+
+```{r}
+#verify the new dataset by tabulating tx vs brand names as above:
+table(data_tx$Brnd_Name[!is.na(data_tx$MAT_generic)], data_tx$tx[!is.na(data_tx$MAT_generic)])
+```
+
+We can now iteratively apply the function to each year of data:
+
+```{r}
+#| output: false
+# create data_tx as an empty dataset:
+data_tx <- data.frame()
+# iterate over years 2013-2021:
+for (year in 2013:2021) {
+  # load the data:
+  data_year <- read_csv(
+    paste0("data/", year, ".csv"),
+    show_col_types = FALSE,
+    progress = TRUE
+  )
+  # apply the treatment function:
+  data_year <- treatment(data_year)
+  # set the `year` variable:
+  data_year$year <- year
+  # append the data to the `data_tx` dataset:
+  data_tx <- rbind(data_tx, data_year)
+}
+
+# cleanup
+rm(data_year, year)
+```
+
+### Validate
+
+We can now validate the new dataset by tabulating `tx` vs `brand names` variables as above:
+
+```{r}
+table(data_tx$Brnd_Name[!is.na(data_tx$MAT_generic)], data_tx$tx[!is.na(data_tx$MAT_generic)]) |>
+  # add row for totals:
+  addmargins(margin = 1) 
+```
+
+We can see that three lines correspond to null values for the MAT variables, "Diskets" (a methadone OUD product), "Dolophine Hcl" (a methadone product indicated for OUD or pain), and "Embeda" (a morphine/naltrexone product).  We will now count the number of observations with NA values for one or more of the MAT variables or the tx variable:
+
+```{r}
+# filter to observations with NA values for one or more of the MAT variables or the tx variable:
+data_tx |>
+  filter(is.na(MAT_generic) | is.na(MAT_brand) | is.na(tx)) |>
+  nrow()
+# filter to observations with NA values for generic:
+data_tx |>
+  filter(is.na(MAT_generic)) |>
+  nrow()
+# filter to observations with NA values for brand:
+data_tx |>
+  filter(is.na(MAT_brand)) |>
+  nrow()
+# filter to observations with NA values for tx:
+data_tx |>
+  filter(is.na(tx)) |>
+  nrow()
+```
+
+A little bit of cleanup:
+
+```{r}
+rm(treatment)
+```
+
+## Rural vs Urban
+
+### Using USGS Data
+
+#### USGS Classification Overview
+
+Using the USGS Populated Places dataset, we will attempt to convert the city/state data from the dataset into the CDC's 2013 Urban-Rural Classification using the following steps:
+
+ - The USGS dataset (which can be found as a text file within their Geographic Names Information System (GNIS) [here](https://www.usgs.gov/us-board-on-geographic-names/download-gnis-data)) contains several variables including the state name/FIPS, the 'map name' (which is often the city name), and the county name/FIPS.  The first step will be to lookup the city/state in this dataset and retrieve the full FIPS.
+ - Lookup rural-urban clssification: For this step we can use the FIPS code to lookup the CDC's [2013 Urban-Rural Classification Scheme for Counties](https://www.cdc.gov/nchs/data_access/urban_rural.htm); specifically using the [NCHSurbruralcodes Spreadsheet](https://www.cdc.gov/nchs/data/data_acces_files/NCHSURCodes2013.xlsx) which contains the FIPS codes and rural-urban classifications for each county in the US.
+ 
+#### Prepping the USGS Dataset
+
+```{r}
+# load the USGS Populated Places dataset:
+usgs <- read_delim(
+  "data/PopulatedPlaces_National.txt",
+  delim = "|", # the file is pipe-delimited
+  col_names = TRUE
+)
+```
+
+Creating a 'short' dataset to hopefully speed up the lookup process:
+
+```{r}
+usgs_short <- usgs |>
+  select(state_numeric, map_name, county_numeric, feature_name) |>
+  distinct()
+# test
+n_distinct(usgs_short)
+```
+
+Creating a 'lower' dataset with capitalization may find some straggling entries:
+
+```{r}
+usgs_lower <- usgs |> 
+  select(state_numeric, map_name, county_numeric, feature_name) |>
+  distinct() |>                                     # remove duplicate rows
+  mutate(
+    map_name = str_to_lower(map_name),              # convert map_name to lower case
+    feature_name = str_to_lower(feature_name)       # convert feature_name to lower case
+  )
+# test
+n_distinct(usgs_lower)
+# cleanup
+rm(usgs)
+```
+
+#### Searching USGS dataset with left_join
+
+The following code will find the county FIPS code from the USGS dataset; NB entries from Puerto Rico, Virgin Islands, and Guam are filtered out in this step, as are any entries with a military mail code or a missing address:
+
+```{r}
+# `left_join` the USGS dataset into the `data_tx` to add `Prscrbr_County_FIPS`; matching on state and city:
+data_fips <- data_tx |>
+  # filter out Puerto Rico, Virgin Islands, and Guam; these are not in NCHSUR  (codes 66, 72, 78):
+  filter(Prscrbr_State_FIPS != "66" & Prscrbr_State_FIPS != "72" & Prscrbr_State_FIPS != "78") |>
+  # filter out military mail codes (codes AA, AE, AP); other codes (ZZ, XX):
+  filter(!str_detect(Prscrbr_State_Abrvtn, "AA") & !str_detect(Prscrbr_State_Abrvtn, "AE") & !str_detect(Prscrbr_State_Abrvtn, "AP") & !str_detect(Prscrbr_State_Abrvtn, "ZZ") & !str_detect(Prscrbr_State_Abrvtn, "XX")) |>
+  # filter out missing state fips:
+  filter(!is.na(Prscrbr_State_FIPS)) |>
+    left_join(
+      usgs_short[-c(4)],                              # the 'right' dataset; [-c(4)] removes variable with index 4, feature_name
+      by = join_by(
+        Prscrbr_State_FIPS == state_numeric,
+        Prscrbr_City == map_name
+      ),
+      relationship = "many-to-one",                   # left_join will not work without specifying this relation
+      multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+  )
+
+# Verification:
+nrow(data_fips)
+nrow(data_tx)-nrow(data_fips)
+# how many missing lines
+data_fips |> filter(is.na(county_numeric)) |> nrow()
+# how many unique combinations of city/state are missing:
+data_fips |> filter(is.na(county_numeric)) |> 
+  select(Prscrbr_City, Prscrbr_State_FIPS) |> n_distinct()
+
+# store county FIPS in new variable for next merge:
+data_fips$county_fips <- data_fips$county_numeric
+```
+
+We can try matching the `Prscrbr_City` to the `feature_name` variable in the USGS dataset:
+
+```{r}
+data_fips <- data_fips |>
+  select(-county_numeric) |>                        # remove county_numeric to prevent naming collision
+  left_join(
+    usgs_short[-c(2)],                              # the 'right' dataset; [-c(2)] removes variable with index 2, map_name
+    by = join_by(
+        Prscrbr_State_FIPS == state_numeric,
+        Prscrbr_City == feature_name
+    ),
+    relationship = "many-to-one",                   # left_join will not work without specifying this relation
+    multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+  )
+
+# number of missing:
+data_fips |>  filter(is.na(county_numeric)) |> nrow()
+# number missing for both:
+data_fips |>
+  filter(is.na(county_fips) & is.na(county_numeric)) |>
+  select(Prscrbr_City, Prscrbr_State_FIPS) |> nrow()
+# county number of distinct city/state pairs produce missing values
+data_fips |>
+  filter(is.na(county_fips) & is.na(county_numeric)) |>
+  select(Prscrbr_City, Prscrbr_State_FIPS) |> n_distinct()
+# view some missing entries to get some idea of what's going on:
+data_fips |>
+  filter(is.na(county_numeric)) |>  
+  select(Prscrbr_NPI, Prscrbr_City, Prscrbr_State_Abrvtn) |>
+  head(n = 100)
+```
+
+The above output shows common issues with place names between the datasets:
+
+ - apostrophes are missing in the CDC dataset, but not USGS
+ - 'saint', 'Mt', 'N', 'Ft.' are all abbreviated in CDC, but not USGS; similarly 'Phila.' is 'Philadelphia' in USGS
+ - 'plains' PA corresponds to 'Plainsville' in USGS
+ - Berlin vt is in Washington County, FIPS 023, but this is `west Berlin` in USGS; similarly 'Hardwick' is separated as ' Hardwick Center', etc
+ - 'Stansbury Park' is miscapitalized as 'Stansbury park' in the USGS dataset
+ - 'Saint Clair Shores' MI is in Macomb County, FIPS 099, but this is listed as ''Saint Clair Haven' in the USGS dataset
+ - 'DeFuniak Springs' FL is in Walton County, FIPS 131, but this is listed as 'De Funiak Springs' in the USGS dataset
+ - 'Desoto' TX is in Dallas County, FIPS 113, but this is listed as 'DeSoto' in the USGS dataset
+ - 'Allenstown' NH is in Merrimack County, FIPS 013, but this is listed as 'Allenstown Elementary School' in the USGS dataset
+ - Cortlandt Manor NY is in Westchester County, FIPS 119, but this is listed as 'Van Cortlandtville' in the USGS dataset
+ - 'Village Of Golf' FL is in Palm Beach County, FIPS 099, but this is listed as 'Golf' in the USGS dataset
+ - entries which may need to be hardcoded (e.g. USGS unlisted entries):
+   - Shelby Township is in Oceana County, FIPS 127
+   - Johnston RI is in Providence County, FIPS 007, but this is unlisted in the USGS dataset
+   - Mercerville nj is in Mercer County, FIPS 021, but this is unlisted in the USGS dataset
+   - 'Brownstown Twp' MI is in Wayne County, FIPS 163, but this is unlisted in the USGS dataset
+   - 'Clinton Twp' MI is in Macomb County, FIPS 099, but this is unlisted in the USGS dataset
+ 
+
+We can write a recode of the `Prscrbr_City` variable from the CDC dataset using `campfin` package and the `expand_abbrev` function to fix these issues:
+
+```{r}
+data_fips$city_fixed <- expand_abbrev(
+  data_fips$Prscrbr_City,
+  # vector of regexes of abbreviations to expand:
+  abb = c(
+    "St\\.", "St\\s", "Mt\\.", "Mt\\s", "N\\.", "N\\s", 
+    "S\\.", "S\\s", "E\\.", "E\\s", "W\\.", "W\\s", 
+    "Phila\\.", "Phila\\s", "Phila$", "Twp\\.", "Twp\\s", 
+    "Coeur D Alene", "\\sD\\s", "Stansbury Park", "^Plains$",
+    "DeFuniak Springs", "Defuniak Springs", "Desoto", "Cortlandt Manor", "Village Of Golf",
+    "Mcmurray"
+    ),
+  # vector of expansions for corresponding regex:
+  rep = c(
+    "Saint", "Saint ", "Mount", "Mount ", "North", "North ", 
+    "South", "South ", "East", "East ", "West", "West ", 
+    "Philadelphia", "Philadelphia ", "Philadelphia", "Township", "Township ", 
+    "Coeur D'Alene", " D'", "Stansbury park", "Plainsville", 
+    "De Funiak Springs", "De Funiak Springs", "DeSoto", "Van Cortlandtville", "Golf",
+    "McMurray"
+    )
+  )
+```
+
+Repeating the above process to match on the new `city_fixed` variable:
+
+first we will collect our previously found county FIPS variables into a single entry:
+
+```{r}
+data_fips$county_fips <- fifelse(
+  !is.na(data_fips$county_fips),       # test if Prscrbr_County_FIPS is not missint
+  data_fips$county_fips,               # if not missing, value is Prscrbr_County_FIPS
+  data_fips$county_numeric,                    # if Prscrbr_County_FIPS is NA, fills in with county_numeric
+  na = NA
+)
+# test
+table(
+  data_fips$county_fips == data_fips$county_numeric,
+  is.na(data_fips$county_fips)
+) |> addmargins()
+table(
+  is.na(data_fips$county_numeric),
+  is.na(data_fips$county_fips)
+) |> addmargins()
+data_fips |>
+  filter(is.na(county_numeric) & is.na(county_fips)) |>
+  nrow()
+data_fips |>
+  filter(!is.na(county_numeric) & is.na(county_fips)) |>
+  nrow()
+# this shows us that we can safely remove county_numeric:
+data_fips <- data_fips |>
+  # remove feature_name, USGS_city_name, Prscrbr_County_FIPS:
+  select(-county_numeric)
+```
+
+Matching city_fixed on map_name:
+
+```{r} 
+data_fips <- data_fips |>
+  left_join(
+    usgs_short,                                     # the 'right' dataset
+      by = join_by(
+        city_fixed == map_name,                     # these variables must exactly match in both datasets
+        Prscrbr_State_FIPS == state_numeric
+        ),
+    relationship = "many-to-one",                   # left_join will not work without specifying this relation
+    multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+  ) |>
+  select(-feature_name)                             # remove feature_name
+
+# check
+# how many new finds
+data_fips |>
+  filter(!is.na(county_numeric) & is.na(county_fips)) |>
+  nrow()
+# merge new values into county_fips
+data_fips$county_fips <- fifelse(
+  !is.na(data_fips$county_fips),
+  data_fips$county_fips,
+  data_fips$county_numeric,
+  na = NA
+)
+# how many remain missing
+data_fips |> filter(is.na(county_numeric) & is.na(county_fips)) |> nrow()
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+
+# get rid of county_numeric now:
+data_fips <- data_fips |> select(-county_numeric)                        # remove county_numeric
+```
+
+matching city_fixed on feature_name:
+
+```{r}
+data_fips <- data_fips |>
+  left_join(
+    usgs_short[-c(2)],                              # the 'right' dataset; [-c(2)] removes variable with index 2, map_name
+      by = join_by(
+        city_fixed == feature_name,                 # these variables must exactly match in both datasets
+        Prscrbr_State_FIPS == state_numeric
+        ),
+    relationship = "many-to-one",                   # left_join will not work without specifying this relation
+    multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+  )
+
+# how many new finds
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# how many remain NA
+data_fips |> filter(is.na(county_numeric) & is.na(county_fips)) |> nrow()
+
+# merge new values into county_fips
+data_fips$county_fips <- fifelse(
+  !is.na(data_fips$county_fips),
+  data_fips$county_fips,
+  data_fips$county_numeric,
+  na = NA
+)
+# verify the merge by checking NA values
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# remove county_numeric
+data_fips <- data_fips |> select(-county_numeric)
+```
+
+Examine the remaining missing county_fips:
+
+```{r}
+# number of missing :
+data_fips |> filter(is.na(county_fips)) |> nrow()
+# county number of distinct city/state pairs produce missing values
+data_fips |>
+  filter(is.na(county_fips)) |>
+  select(Prscrbr_City, Prscrbr_State_FIPS) |>
+  n_distinct()
+# view some missing entries to get some idea of what's going on:
+data_fips |> 
+  filter(is.na(county_fips)) |>
+  # select(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed) |>
+  head(n = 100)
+
+places <- data_fips |> 
+  filter(is.na(county_fips)) |>
+  select(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed) |>
+  group_by(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed) |>
+  summarise(n = n())
+```
+
+The above output shows common issues with place names between the datasets remain.  We can write another recode of the `Prscrbr_City` variable from the CDC dataset using `campfin` package and the `expand_abbrev` function to fix these issues:
+
+```{r}
+data_fips$city_fixed <- expand_abbrev(
+  data_fips$Prscrbr_City,
+  abb = c(
+    "Winston Salem" = "Winston-Salem",
+    "Coeur D Alene" = "Coeur D'Alene",
+    "Wilkes Barre" = "Wilkes-Barre",
+    "Fond Du Lac" = "Fond du Lac",
+    "Southold New York" = "Southold",
+    # it will be quicker to manually find each instance where 'Mc' is followed by a lower case letter and add a line to capitalize each letter here:  # NB I'm going in alphabetical order here
+    "Mcadenville" = "McAdenville",
+    "Mcalester" = "McAlester",
+    "Mcallen" = "McAllen",
+    "Mccall" = "McCall",
+    "Mccaysville" = "McCaysville",
+    "Mcclearly" = "McClearly",
+    "Mccleary" = "McCleary",
+    "Mcclellan" = "McClellan",
+    "Mcclellanville" = "McClellanville",
+    "Mccloud" = "McCloud",
+    "Mccomb" = "McComb",
+    "Mcconnelsville" = "McConnelsville",
+    "Mcconnelsville" = "McConnelsville",
+    "Mccormick" = "McCormick",
+    "Mccrory" = "McCrory",
+    "Mcdonough" = "McDonough",
+    "Mcgrath" = "McGrath",
+    "Mcgregor" = "McGregor",
+    "Mchenry" = "McHenry",
+    "Mckeesport" = "McKeesport",
+    "Mckinleyville" = "McKinleyville",
+    "Mckinney" = "McKinney",
+    "Mclean" = "McLean",
+    "Mcmechen" = "McMechen",
+    "Mcminnville" = "McMinnville",
+    "Mcpherson" = "McPherson",
+    "Mc " = "Mc",
+    "Ft " = "Fort ",
+    "Ft. " = "Fort ",
+    "O Fallon" = "O'Fallon",
+    "O'fallon" = "O'Fallon",
+    "Hts." = "Heights",
+    "Hts" = "Heights",
+    "Hgts." = "Heights",
+    "Hgts" = "Heights",
+    "Spgs." = "Springs",
+    "Spgs" = "Springs",
+    "St. " = "Saint ",
+    "St " = "Saint ",
+    "Lavale" = "La Vale",
+    "La Place" = "Laplace",
+    "Hts" = "Heights",
+    "Hts." = "Heights",
+    "Pt " = "Point ",
+    "Gt " = "Great ",
+    "Pittburgh" = "Pittsburgh",
+    "Coeur D'alene" = "Coeur D'Alene",
+    "Ste Genevieve" = "Sainte Genevieve",
+    "Vero Bch" = "Vero Beach",
+    "Schnectady" = "Schenectady",
+    "Wright Patterson Afb" = "Dayton",
+    "No " = "North ",
+    "Bala Cynwyd" = "Bala-Cynwyd",
+    "Deland" = "DeLand",
+    "O " = "O'",
+    "Keesler Afb" = "Biloxi",
+    "Mt. " = "Mount ",
+    "Phila." = "Philadelphia",
+    "N. " = "North ",
+    "W. " = "West ",
+    "La Porte" = "LaPorte",
+    "Defuniak Springs" = "De Funiak Springs",
+    "Pgh" = "Pittsburgh",
+    "Sedro-Wooley" = "Sedro-Woolley",
+    "St.Paul" = "Saint Paul",
+    "St.Clairsville" = "Saint Clairsville",
+    "Land O Lakes" = "Land O' Lakes",
+    "Coeur D' Alene" = "Coeur D'Alene"
+    )
+  )
+# manually set "West Bloomfield" MI `city_fixed` to 'Bloomfield:
+data_fips$city_fixed[data_fips$Prscrbr_City == "West Bloomfield" & data_fips$Prscrbr_State_Abrvtn == "MI"] <- "Bloomfield"
+# manually set "Clinton Township" MI, or 'Clinton Twp" MI 'city_fixed' value to 'Macomb': 
+data_fips$city_fixed[data_fips$Prscrbr_City == "Clinton Township" & data_fips$Prscrbr_State_Abrvtn == "MI"] <- "Macomb"
+data_fips$city_fixed[data_fips$Prscrbr_City == "Clinton Twp" & data_fips$Prscrbr_State_Abrvtn == "MI"] <- "Macomb"
+data_fips$city_fixed[data_fips$Prscrbr_City == "Saint Clair Shores" & data_fips$Prscrbr_State_Abrvtn == "MI"] <- "Macomb"
+# manually set Brick NJ `city_fixed` to 'Bricktown':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Brick" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Bricktown"
+# manually set Lutherville MD `city_fixed` to 'Timonium Heights':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Lutherville" & data_fips$Prscrbr_State_Abrvtn == "MD"] <- "Timonium Heights"
+# Cranberry Twp PA manually set to 'Butler':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Cranberry Twp" & data_fips$Prscrbr_State_Abrvtn == "PA"] <- "Butler"
+data_fips$city_fixed[data_fips$Prscrbr_City == "Cranberry Township" & data_fips$Prscrbr_State_Abrvtn == "PA"] <- "Butler"
+# Voorhees NJ manually set to 'Camden':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Voorhees" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Camden"
+# Berlin VT manually set to 'Berlin Corners':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Berlin" & data_fips$Prscrbr_State_Abrvtn == "VT"] <- "Berlin Corners"
+# sandy UT manually set to 'Salt Lake City':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Sandy" & data_fips$Prscrbr_State_Abrvtn == "UT"] <- "Salt Lake City"
+# Johnston RI manually set to 'Providence':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Johnston" & data_fips$Prscrbr_State_Abrvtn == "RI"] <- "Providence"
+# Dartmouth MA manually set to 'New Bedford':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Dartmouth" & data_fips$Prscrbr_State_Abrvtn == "MA"] <- "New Bedford"
+# Fort Mohave AZ manually set to 'Mohave Valley':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Fort Mohave" & data_fips$Prscrbr_State_Abrvtn == "AZ"] <- "Mohave Valley"
+# Greenwich CT manually set to 'Stamford':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Greenwich" & data_fips$Prscrbr_State_Abrvtn == "CT"] <- "Stamford"
+# neptune NJ manually set to 'Asbury Park':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Neptune" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Asbury Park"
+# Vestavia Hills AL manually set to 'Birmingham':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Vestavia" & data_fips$Prscrbr_State_Abrvtn == "AL"] <- "Birmingham"
+# Westampton NJ manually set to 'Mount Holly':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Westampton" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Mount Holly"
+# Lagrange GA manually set to 'La Grange':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Lagrange" & data_fips$Prscrbr_State_Abrvtn == "GA"] <- "La Grange"
+# Carmel CA manually set to 'Monterey':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Carmel" & data_fips$Prscrbr_State_Abrvtn == "CA"] <- "Monterey"
+# West Hills CA manually set to 'Los Angeles':
+data_fips$city_fixed[data_fips$Prscrbr_City == "West Hills" & data_fips$Prscrbr_State_Abrvtn == "CA"] <- "Los Angeles"
+# Colebrook NH manually set to 'Coos Junction':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Colebrook" & data_fips$Prscrbr_State_Abrvtn == "NH"] <- "Coos Junction"
+# North Huntingdon PA manually set to 'Irwin':
+data_fips$city_fixed[data_fips$Prscrbr_City == "North Huntingdon" & data_fips$Prscrbr_State_Abrvtn == "PA"] <- "Irwin"
+# King of Prussia PA manually set to 'Montgomery':
+data_fips$city_fixed[data_fips$Prscrbr_City == "King of Prussia" & data_fips$Prscrbr_State_Abrvtn == "PA"] <- "Montgomery"
+# Kihei HI manually set to 'Maui Meadows':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Kihei" & data_fips$Prscrbr_State_Abrvtn == "HI"] <- "Maui Meadows"
+# Galloway NJ manually set to 'Atlantic City':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Galloway" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Atlantic City"
+# Greenacres FL manually set to 'West Palm Beach':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Greenacres" & data_fips$Prscrbr_State_Abrvtn == "FL"] <- "West Palm Beach"
+# Kailua Kona HI manually set to 'Kailua':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Kailua Kona" & data_fips$Prscrbr_State_Abrvtn == "HI"] <- "Kailua"
+# Brownstown Twp MI manually set to 'Detroit':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Brownstown Twp" & data_fips$Prscrbr_State_Abrvtn == "MI"] <- "Detroit"
+# Egg Harbor Township NJ manually set to 'Atlantic City':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Egg Harbor Township" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Atlantic City"
+# Castleton NY manually set to 'Albany':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Castleton" & data_fips$Prscrbr_State_Abrvtn == "NY"] <- "Albany"
+# Allenstown NH manually set to 'Concord':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Allenstown" & data_fips$Prscrbr_State_Abrvtn == "NH"] <- "Concord"
+# Wilmington VT manually set to 'Brattleboro':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Wilmington" & data_fips$Prscrbr_State_Abrvtn == "VT"] <- "Brattleboro"
+# Slc UT manually set to 'Salt Lake City':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Slc" & data_fips$Prscrbr_State_Abrvtn == "UT"] <- "Salt Lake City"
+# Ocean NJ manually set to 'Asbury Park':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Ocean" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Asbury Park"
+# Timonium MD manually set to 'Baltimore':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Timonium" & data_fips$Prscrbr_State_Abrvtn == "MD"] <- "Baltimore"
+# Fort Bragg NC manually set to 'Fayetteville':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Fort Bragg" & data_fips$Prscrbr_State_Abrvtn == "NC"] <- "Fayetteville"
+# Rockingham VA manually set to 'Harrisonburg':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Rockingham" & data_fips$Prscrbr_State_Abrvtn == "VA"] <- "Harrisonburg"
+# Lansdowne VA manually set to 'Leesburg':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Lansdowne" & data_fips$Prscrbr_State_Abrvtn == "VA"] <- "Leesburg"
+# Aston PA manually set to 'Philadelphia':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Aston" & data_fips$Prscrbr_State_Abrvtn == "PA"] <- "Philadelphia"
+# Hardwick VT manually set to 'Montpelier':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Hardwick" & data_fips$Prscrbr_State_Abrvtn == "VT"] <- "Montpelier"
+# Sedro Woolley WA manually set to 'Mount Vernon':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Sedro Woolley" & data_fips$Prscrbr_State_Abrvtn == "WA"] <- "Mount Vernon"
+# Howell NJ manually set to 'Trenton':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Howell" & data_fips$Prscrbr_State_Abrvtn == "NJ"] <- "Trenton"
+# Sheffield Village OH manually set to 'Cleveland':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Sheffield Village" & data_fips$Prscrbr_State_Abrvtn == "OH"] <- "Cleveland"
+# Shelby Township MI manually set to 'Detroit':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Shelby Township" & data_fips$Prscrbr_State_Abrvtn == "MI"] <- "Detroit"
+# Brownstown MI manually set to 'Detroit':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Brownstown" & data_fips$Prscrbr_State_Abrvtn == "MI"] <- "Detroit"
+# York ME manually set to 'Portland':
+data_fips$city_fixed[data_fips$Prscrbr_City == "York" & data_fips$Prscrbr_State_Abrvtn == "ME"] <- "Portland"
+# Feasterville Trevose PA manually set to 'Philadelphia':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Feasterville Trevose" & data_fips$Prscrbr_State_Abrvtn == "PA"] <- "Philadelphia"
+# Sun City Center FL manually set to 'Tampa':
+data_fips$city_fixed[data_fips$Prscrbr_City == "Sun City Center" & data_fips$Prscrbr_State_Abrvtn == "FL"] <- "Tampa"
+
+# convert to lower case:
+data_fips$city_fixed <- tolower(data_fips$city_fixed)
+
+# check city_fixed values for any remaining NA FIPS codes:
+places <- data_fips |> 
+  filter(is.na(county_fips)) |>
+  select(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed) |>
+  group_by(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed) |>
+  summarise(n = n())
+```
+
+Proceeding to match all lower case; first matching city_fixed on map_name:
+
+```{r}
+data_fips <- data_fips |>
+  left_join(
+    usgs_lower[-c(4)],                              # the 'right' dataset; [-c(4)] removes variable with index 4, feature_name
+      by = join_by(
+        city_fixed == map_name,                     # these variables must exactly match in both datasets
+        Prscrbr_State_FIPS == state_numeric
+        ),
+    relationship = "many-to-one",                   # left_join will not work without specifying this relation
+    multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+  )
+# how many new finds
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# merge new values into county_fips
+data_fips$county_fips <- fifelse(
+  !is.na(data_fips$county_fips),
+  data_fips$county_fips,
+  data_fips$county_numeric,
+  na = NA
+)
+data_fips |> filter(is.na(county_numeric) & is.na(county_fips)) |> nrow()
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+
+# get rid of county_numeric now:
+data_fips <- data_fips |> select(-county_numeric)                        # remove county_numeric
+```
+
+Now matching city_fixed on feature_name:
+
+```{r}
+data_fips <- data_fips |>
+  left_join(
+    usgs_lower[-c(2)],                              # the 'right' dataset; [-c(2)] removes variable with index 2
+      by = join_by(
+        city_fixed == feature_name,
+        Prscrbr_State_FIPS == state_numeric         # these variables must exactly match in both datasets
+        ),
+    relationship = "many-to-one",                   # left_join will not work without specifying this relation
+    multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+  )
+# how many new finds
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# how many remain NA
+data_fips |> filter(is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# merge new values into county_fips
+data_fips$county_fips <- fifelse(
+  !is.na(data_fips$county_fips),
+  data_fips$county_fips,
+  data_fips$county_numeric,
+  na = NA
+)
+# verify the merge by checking NA values
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# remove county_numeric
+data_fips <- data_fips |> select(-county_numeric)
+```
+
+With fewer than 1% of observations remaining unmatched, we can randomly assign the remaining NA values to one of the counties in `Prscrbr_State_FIPS`:
+
+```{r}
+data_fips <- data_fips |>
+  left_join(
+    usgs_lower[-c(2,4)],                            # the 'right' dataset; [-c(2,4)] removes variable with index 2 & 4
+      by = join_by(
+        Prscrbr_State_FIPS == state_numeric         # these variables must exactly match in both datasets
+        ),
+    relationship = "many-to-one",                   # left_join will not work without specifying this relation
+    multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+  )
+# how many new finds
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# mark new finds as randomly assigned
+data_fips$random_fips <- fifelse(
+  !is.na(data_fips$county_numeric) & is.na(data_fips$county_fips), TRUE, FALSE
+)
+# how many remain NA
+data_fips |> filter(is.na(county_numeric) & is.na(county_fips)) |> nrow()
+
+# merge new values into county_fips
+data_fips$county_fips <- fifelse(
+  !is.na(data_fips$county_fips),
+  data_fips$county_fips,
+  data_fips$county_numeric,
+  na = NA
+)
+# verify the merge by checking NA values
+data_fips |> filter(!is.na(county_numeric) & is.na(county_fips)) |> nrow()
+# remove county_numeric
+data_fips <- data_fips |> select(-county_numeric)
+```
+
+Create full FIPS & Cleanup:
+
+```{r}
+# convert the state and county codes to the full FIPS code; this code yields`NA` if either of the codes are missing:
+data_fips$fips <- paste0(data_fips$Prscrbr_State_FIPS, data_fips$county_fips) |>
+  as.numeric()  # Convert 5-digit FIPS characters to numeric to match the NCHSURC dataset
+
+# check NA values in the new variable:
+data_fips |> filter(is.na(fips)) |> nrow()
+# Cleanup
+rm(places, usgs_lower, usgs_short)
+```
+
+#### Matching to NCHSURC Dataset
+
+We will proceed to match the majority of FIPS codes in the dataset; starting by loading the NCHSURC dataset:
+
+```{r}
+nchsurc <- read_excel(
+  "data/NCHSURCodes2013.xlsx",
+  col_names = TRUE) |>
+  # rename the FIPS code NCHSURC variables (to make the left_join simpler):
+  rename(fips = `FIPS code`, nchsurc = `2013 code`)
+```
+
+Lookup 2013 NCHSUR code:
+
+```{r}
+data_nchsurc <- left_join(
+  data_fips,                            # the 'left' dataset
+  nchsurc[c(1,7)],                      # the 'right' dataset; columns 1 & 7 are FIPS & NCHSURC
+  by = c("fips"),                       # these variables must exactly match in both datasets
+  relationship = "many-to-one",         # left_join will not work without specifying this relation
+  multiple = "any",                     # randomly returns one of the matching rows in USGS dataset
+)
+
+# check NA values in the new variable:
+data_nchsurc |> filter(is.na(nchsurc)) |>  nrow()
+# which states have NA values?
+data_nchsurc |> filter(is.na(nchsurc)) |> select(Prscrbr_State_FIPS) |> unique()
+# How many NA values are there for each state?
+data_nchsurc |> filter(is.na(nchsurc)) |> select(Prscrbr_State_FIPS, fips, random_fips) |>
+  group_by(fips,random_fips) |>
+  summarise(n = n()) |> arrange(desc(n))
+# view fips = 2063, or 11000:
+data_nchsurc |> filter(fips == 2063|fips == 11000) |> head(n = 100)
+```
+
+State FIPS code 09 corresponds to Connecticut; we will address non-CT FIPS first:
+
+```{r}
+# manually set FIPS 11000 to 11001:
+data_nchsurc$fips[data_nchsurc$fips == 11000] <- 11001
+# manually set FIPS 2063 to 2261:
+data_nchsurc$fips[data_nchsurc$fips == 2063] <- 2261
+# rename the NCHSURC variable:
+data_nchsurc <- data_nchsurc |> rename(nchsurc_old = nchsurc)
+#search again over the NCHSURC dataset
+data_nchsurc <- left_join(
+  data_nchsurc,                         # the 'left' dataset
+  nchsurc[c(1,7)],                      # the 'right' dataset; columns 1 & 7 are FIPS & NCHSURC
+  by = c("fips"),                       # these variables must exactly match in both datasets
+  relationship = "many-to-one",         # left_join will not work without specifying this relation
+  multiple = "any",                     # randomly returns one of the matching rows in USGS dataset
+)  
+
+# Check missing values
+data_nchsurc |> filter(is.na(nchsurc)) |>  nrow()
+# check for missing values in ncshurc_old vs nchsurc:
+table(is.na(data_nchsurc$nchsurc_old), is.na(data_nchsurc$nchsurc))
+# How many NA values are there for each state?
+data_nchsurc |> filter(is.na(nchsurc)) |> select(Prscrbr_State_FIPS, fips) |>
+  group_by(fips) |> summarise(n = n()) |> arrange(desc(n))
+# thus we can discard fips_old
+data_nchsurc <- data_nchsurc |> select(-nchsurc_old)
+```
+
+Apparently [CT has switched from counties to planning ditricts](https://www.federalregister.gov/documents/2022/06/06/2022-12063/change-to-county-equivalents-in-the-state-of-connecticut), and the new codes are in the USGS dataset, but not in the NCHSURC dataset.  We will proceed to examine the CT codes, all of which are unmatched:
+
+```{r}
+places <- data_nchsurc |> 
+  filter(is.na(nchsurc)) |>
+  group_by(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed, fips) |>
+  select(Prscrbr_City, Prscrbr_State_Abrvtn, city_fixed, fips) |>
+  summarise(n = n()) |> arrange(desc(n))
+head(places)
+```
+
+One approach is to make a dataframe with two vectors columns, one column with each city name in CT, and the other column with the corresponding FIPS code.  We can find such a table [at the CT State Library](https://ctstatelibrary.org/cttowns/counties); it has been download and saved to /data as 'ct_towns.ods':
+
+```{r}
+# reading CT state library data
+ct_towns <- read_ods(
+  path = "data/ct_towns.ods",
+  col_names = TRUE)
+# make a new variable assigning the county FIPS code based on the county; Fairfield = 9001, Hartford = 9003, etc.
+ct_towns$ct_fips <- case_when(
+  ct_towns$County == "Fairfield" ~ 9001,
+  ct_towns$County == "Hartford" ~ 9003,
+  ct_towns$County == "Litchfield" ~ 9005,
+  ct_towns$County == "Middlesex" ~ 9007,
+  ct_towns$County == "New Haven" ~ 9009,
+  ct_towns$County == "New London" ~ 9011,
+  ct_towns$County == "Tolland" ~ 9013,
+  ct_towns$County == "Windham" ~ 9015
+)
+ct_towns$state_numeric <- "09"
+
+# test match ct_towns into 'places' dataset:
+places <- left_join(
+  places,                                       # the 'left' dataset
+  ct_towns[c(1,6)],                           # the 'right' dataset; with Town.name, fips, and state_fips variables
+  by = join_by(
+        Prscrbr_City == Town.name                # these variables must exactly match in both datasets
+        ),
+  relationship = "many-to-one",                   # left_join will not work without specifying this relation
+  multiple = "any",                             # randomly returns one of the matching rows in USGS dataset
+)
+places |> filter(is.na(ct_fips)) |> head(n = 100)
+# places |> select(-ct_fips)
+```
+
+We can see that the CT State Library data is missing some towns, and that some towns are missing from the NCHSURC dataset.  We will manually add these towns to the ct_towns dataset:
+
+```{r}
+# manually add Willimantic, CT
+ct_towns <- ct_towns |> add_row(Town.name = "Willimantic", ct_fips = 9015, state_numeric = "09")
+# Lakeville
+ct_towns <- ct_towns |> add_row(Town.name = "Lakeville", ct_fips = 9005, state_numeric = "09")
+# Terryville
+ct_towns <- ct_towns |> add_row(Town.name = "Terryville", ct_fips = 9003, state_numeric = "09")
+# Turrington
+ct_towns <- ct_towns |> add_row(Town.name = "Turrington", ct_fips = 9005, state_numeric = "09")
+# Moodus
+ct_towns <- ct_towns |> add_row(Town.name = "Moodus", ct_fips = 9007, state_numeric = "09")
+# Oakdale
+ct_towns <- ct_towns |> add_row(Town.name = "Oakdale", ct_fips = 9011, state_numeric = "09")
+# Plantsville
+ct_towns <- ct_towns |> add_row(Town.name = "Plantsville", ct_fips = 9003, state_numeric = "09")
+# Sandy Hook	
+ct_towns <- ct_towns |> add_row(Town.name = "Sandy Hook", ct_fips = 9001, state_numeric = "09")
+# East Berlin	
+ct_towns <- ct_towns |> add_row(Town.name = "East Berlin", ct_fips = 9003, state_numeric = "09")
+# Jewett City	
+ct_towns <- ct_towns |> add_row(Town.name = "Jewett City", ct_fips = 9011, state_numeric = "09")
+# Kensington
+ct_towns <- ct_towns |> add_row(Town.name = "Kensington", ct_fips = 9003, state_numeric = "09")
+# S Woodstock	
+ct_towns <- ct_towns |> add_row(Town.name = "S Woodstock", ct_fips = 9015, state_numeric = "09")
+# Riverside
+ct_towns <- ct_towns |> add_row(Town.name = "Riverside", ct_fips = 9001, state_numeric = "09")
+# Wauregan
+ct_towns <- ct_towns |> add_row(Town.name = "Wauregan", ct_fips = 9015, state_numeric = "09")
+# Vernon Rockville	
+ct_towns <- ct_towns |> add_row(Town.name = "Vernon Rockville", ct_fips = 9013, state_numeric = "09")
+# Abington
+ct_towns <- ct_towns |> add_row(Town.name = "Abington", ct_fips = 9015, state_numeric = "09")
+# Gales Ferry	
+ct_towns <- ct_towns |> add_row(Town.name = "Gales Ferry", ct_fips = 9011, state_numeric = "09")
+# Mansfield Center	CT	06250	Tolland	09013
+ct_towns <- ct_towns |> add_row(Town.name = "Mansfield Center", ct_fips = 9013, state_numeric = "09")
+# Dayville
+ct_towns <- ct_towns |> add_row(Town.name = "Dayville", ct_fips = 9015, state_numeric = "09")
+# Danielson
+ct_towns <- ct_towns |> add_row(Town.name = "Danielson", ct_fips = 9015, state_numeric = "09")
+# Storrs
+ct_towns <- ct_towns |> add_row(Town.name = "Storrs", ct_fips = 9013, state_numeric = "09")
+# Rockville
+ct_towns <- ct_towns |> add_row(Town.name = "Rockville", ct_fips = 9013, state_numeric = "09")
+# Amston
+ct_towns <- ct_towns |> add_row(Town.name = "Amston", ct_fips = 9007, state_numeric = "09")
+# Pawcatuck
+ct_towns <- ct_towns |> add_row(Town.name = "Pawcatuck", ct_fips = 9011, state_numeric = "09")
+# Old Greenwich	
+ct_towns <- ct_towns |> add_row(Town.name = "Old Greenwich", ct_fips = 9001, state_numeric = "09")
+# Mystic
+ct_towns <- ct_towns |> add_row(Town.name = "Mystic", ct_fips = 9011, state_numeric = "09")
+# Milldale
+ct_towns <- ct_towns |> add_row(Town.name = "Milldale", ct_fips = 9009, state_numeric = "09")
+# Niantic
+ct_towns <- ct_towns |> add_row(Town.name = "Niantic", ct_fips = 9011, state_numeric = "09")
+# Pomfret Center	
+ct_towns <- ct_towns |> add_row(Town.name = "Pomfret Center", ct_fips = 9015, state_numeric = "09")
+# Quinebaug	
+ct_towns <- ct_towns |> add_row(Town.name = "Quinebaug", ct_fips = 9015, state_numeric = "09")
+# Stafford Springs	
+ct_towns <- ct_towns |> add_row(Town.name = "Stafford Springs", ct_fips = 9013, state_numeric = "09")
+# Winsted
+ct_towns <- ct_towns |> add_row(Town.name = "Winsted", ct_fips = 9005, state_numeric = "09")
+# Higganum
+ct_towns <- ct_towns |> add_row(Town.name = "Higganum", ct_fips = 9007, state_numeric = "09")
+# Uncasville
+ct_towns <- ct_towns |> add_row(Town.name = "Uncasville", ct_fips = 9011, state_numeric = "09")
+# Cos Cob	
+ct_towns <- ct_towns |> add_row(Town.name = "Cos Cob", ct_fips = 9001, state_numeric = "09")
+# W Hartford	
+ct_towns <- ct_towns |> add_row(Town.name = "W Hartford", ct_fips = 9003, state_numeric = "09")
+# West Redding	
+ct_towns <- ct_towns |> add_row(Town.name = "West Redding", ct_fips = 9001, state_numeric = "09")
+```
+
+After adding the codes for the missing towns, we can join the two datasets together, and test for any remaining unmatched:
+
+```{r}
+# match the FIPS code to the city name in `data_nchsurc`:
+data_nchsurc <- left_join(
+    data_nchsurc,                                   # the 'left' dataset
+    ct_towns[c(1,6,7)],                             # the 'right' dataset; with Town.name, ct_fips, and state_numeric variables
+      by = join_by(
+        Prscrbr_City == Town.name,                  # these variables must exactly match in both datasets
+        Prscrbr_State_FIPS == state_numeric         # these variables must exactly match in both datasets
+        ),
+    relationship = "many-to-one",                   # left_join will not work without specifying this relation
+    multiple = "any",                               # randomly returns one of the matching rows in USGS dataset
+  )
+
+# Test
+data_nchsurc |> filter(Prscrbr_State_FIPS == "09") |> filter(is.na(ct_fips)) |> nrow()
+# fold ct_fips into fips variable
+data_nchsurc$fips <- fifelse(
+  data_nchsurc$Prscrbr_State_FIPS == "09",     # if state_numeric is CT
+  data_nchsurc$ct_fips,                       # if not missing, value is county_fips
+  data_nchsurc$fips,                    # if Prscrbr_County_FIPS is NA, fills in with county_numeric
+  na = NA
+)
+```
+
+```{r}
+# lookup NCHSURC for CT entries
+# first rename the old NCHSURC variable to protect it:
+data_nchsurc <- data_nchsurc |> rename(nchsurc_old = nchsurc)
+#search again over the NCHSURC dataset
+data_nchsurc <- left_join(
+  data_nchsurc,                         # the 'left' dataset
+  nchsurc[c(1,7)],                      # the 'right' dataset; columns 1 & 7 are FIPS & NCHSURC
+  by = join_by(
+    ct_fips == fips,                    # these variables must exactly match in both datasets
+  ),
+  relationship = "many-to-one",         # left_join will not work without specifying this relation
+  multiple = "any",                     # randomly returns one of the matching rows in USGS dataset
+)  
+
+# Test
+data_nchsurc |> filter(Prscrbr_State_FIPS == "09") |> filter(is.na(nchsurc)) |> nrow()
+data_nchsurc |> filter(is.na(nchsurc) & is.na(nchsurc_old)) |> nrow()
+# Fold in the new NCHSURC variable
+data_nchsurc$nchsurc <- fifelse(
+  is.na(data_nchsurc$nchsurc),                       # if nchsurc is NA
+  data_nchsurc$nchsurc_old,                          # use the old nchsurc variable
+  data_nchsurc$nchsurc,                              # if not missing, value is nchsurc
+  na = NA
+)
+# test missing
+data_nchsurc |> filter(is.na(nchsurc)) |> nrow()
+```
+
+Cleanup
+
+```{r}
+# cleanup
+rm(ct_towns, places, nchsurc)
+# remove unused variables
+data_nchsurc <- data_nchsurc |> 
+  select(-nchsurc_old, -ct_fips)
+```
+
+Set Urban/Rural Classification
+
+```{r}
+# view values of nchsurc$nchsurc
+data_nchsurc |> 
+  group_by(nchsurc) |> 
+  summarise(n = n()) |> 
+  arrange(desc(n))
+# set urban/rural classification
+data_nchsurc$ur <- fifelse(
+  data_nchsurc$nchsurc %in% c("5", "6"),     # if nchsurc is rural                    
+  "rural",                                   # then rural
+  "urban",                                   # else urban
+  na = NA
+)
+```
+
+### Alternate Intensive Approach
+
+Within this section we will use the dataset created above, find latitude and longitude coordinates for each city/state combination to which an observation corresponds, then convert the coordinates to county FIPS code, and then lookup the rural-urbal classification from the FIPS code. Breaking down the specifics of each step, we have:
+
+ - Finding the coordinates: we will use the `geocode()` function from the `ggmap` package to find the coordinates for each city/state combination.  The function will return a dataframe with the coordinates for each city/state combination, and will also return a status code indicating whether the coordinates were found successfully.  We will use the status code to filter out any entries for which the coordinates were not found.
+ - Convert coordinates to FIPS using one of several methods:
+  - `coords_to_fips()`from [fipio](https://cran.r-project.org/web/packages/fipio/index.html)
+  - Look into:
+   - Use the `fips()` function from the `USAboundaries` package to convert the coordinates to FIPS code.  This function uses the `sf` package to find the FIPS code for the county in which the coordinates are located.  This method is the most straightforward, but it is also the slowest.
+   - Use the `fips()` function from the `tigris` package to convert the coordinates to FIPS code.  This function uses the `sf` package to find the FIPS code for the county in which the coordinates are located.  This method is faster than the `USAboundaries` method, but it is still relatively slow.
+   - Use the `fips()` function from the `MazamaSpatialUtils` package to convert the coordinates to FIPS code.  This function uses a lookup table to find the FIPS code for the county in which the coordinates are located.  This method is the fastest, but it is also the least accurate.  The lookup table is based on the 2010 census, so it will not include any counties that were created after 2010.  This method will also not work for any coordinates that are outside of the US.
+ - Lookup rural-urban clssification: For this step we can use CDC's [2013 Urban-Rural Classification Scheme for Counties](https://www.cdc.gov/nchs/data_access/urban_rural.htm); specifically the [NCHSurbruralcodes Spreadsheet](https://www.cdc.gov/nchs/data/data_acces_files/NCHSURCodes2013.xlsx) which contains the FIPS codes and rural-urban classifications for each county in the US.
+ 
+The data can be plotted according to FIPS code using `ggplot2` or `MazamaSpatialPlots` packages.
+
+## Provider Type
+
+Overview of provider types
+
+```{r}
+data_nchsurc |> 
+  group_by(Prscrbr_Type) |> 
+  summarize(n = n()) |> 
+  arrange(desc(n))
+```
+
+Further exploration of provider types:
+
+```{r}
+data_nchsurc |> 
+  filter(tx == "bup_oud") |>
+  group_by(Prscrbr_Type, year) |> 
+  summarize(
+      n = n(), 
+      Supply_yr = round(sum(Tot_Day_Suply)/365, digits=1),
+      Supply_per_Provider_yr = round(Supply_yr/n, digits=1)
+    ) |> 
+  arrange(year, desc(n)) |>
+  # select only the top 10 entries of each year
+  group_by(year) |>
+  slice_max(n, n = 10)
+```
+
+Specify the provider type simplified variable
+
+```{r}
+data_provider <- data_nchsurc |> 
+   mutate(
+     type = case_when(
+       Prscrbr_Type %in% c("Physician Assistant") ~ "PA",
+       Prscrbr_Type %in% c("Nurse Practitioner") ~ "NP",
+       Prscrbr_Type %in% c("Pharmacist") ~ "RPh",
+       Prscrbr_Type %in% c("Family Practice", "Internal Medicine", "Family Medicine", "General Practice", "Geriatric Medicine", "Preventive Medicine") ~ "FP/IM",
+       Prscrbr_Type %in% c("Anesthesiology", "Pain Management	", "Interventional Pain Management", "Pain Medicine") ~ "Pain",
+       Prscrbr_Type %in% c("Psychiatry", "Psychiatry & Neurology", "Neuropsychiatry", "Addiction Medicine", "Counselor") ~ "Psych",
+       .default = "Other"
+     )
+   )
+```
+
+# Final dataset
+
+Create final dataset, save datasets, and cleanup:
+
+```{r}
+data <- data_provider
+# save the final dataset by itself
+save(
+  data,
+  file = "dataset/data.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+# save intermediate datasets
+save(
+  data_tx,
+  file = "dataset/data_tx.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+save(
+  data_provider,
+  file = "dataset/data_provider.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+save(
+  data_nchsurc,
+  file = "dataset/data_nchsurc.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+save(
+  data_fips,
+  file = "dataset/data_fips.RData",
+  compress = TRUE,
+  compression_level = 9
+)
+# cleanup
+rm(data_tx, data_provider, data_nchsurc, data_fips)
+```
+
+# Other Thoughts
+
+Indication for OUD use (vs pain or EtOH use disorder) is a potential source of error when classifying prescriptions in the `tx` variable.  Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):
+
+ - Classify prescriptions as OUD vs pain vs EtOH use disorder based on KNN of names of other drugs prescribed by the provider
+ - Query [FDA NDC DB](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/) for NPIs associated with the values of `Brnd_Name` and `Gnrc_Name` which were matched above, then search those NDCs for the indication for use on DailyMed
+ - Check DEA X waver for prescriber's NPI
+ - Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed
+ - Check prescriber's place of work in NPI DB
+ - interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names
+ 
+Translation from NDC to a drug's brand/generic names likely simplifies many analyses, but could be a significant source of bias for our analysis.
+
+# Session Info
+
+```{r}
+sessionInfo()
+```

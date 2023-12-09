@@ -1,0 +1,67 @@
+---
+title: "Exploratory Analysis"
+author: "Matthew Hoctor, PharmD"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
+quarto::html_document:
+  theme: cerulean
+  highlight: github
+  
+toc: true
+toc-depth: 2
+toc-location: left
+toc-title: Contents
+  
+code-fold: true
+code-overflow: wrap
+code-tools: true
+code-link: true
+
+editor: source
+---
+
+```{r setup, include = FALSE}
+# load libraries:
+library(tidyverse)
+# library(data.table)
+# library(lubridate)
+# library(httr2)        #using bash curl instead
+# library(curl)         #using bash curl instead
+# library(jsonlite)     #fromJSON and other json functions
+```
+
+# Overview
+
+We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis will download and compile medicare part D data before and after the legislation for years 2013-2021, and will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.
+
+# Analysis
+
+## Missing Data
+
+## Geographic MAT Prescribing Patterns
+
+The data can be plotted according to FIPS code using `ggplot2` or `MazamaSpatialPlots` packages.
+
+### Buprenorphine
+
+### Methadone
+
+### Naltrexone
+
+## Causal Discovery?
+
+# Other Thoughts
+
+Indication for OUD use is a potential source of error when assessing prescriptions for buprenorphine and methadone.  Consider future methods to potentially validate OUD vs pain treatment designations (as time allows):
+
+ - Query [FDA NDC DB](https://open.fda.gov/apis/drug/ndc/how-to-use-the-endpoint/) for NPIs associated with the values of `Brnd_Name` and `Gnrc_Name` which were matched above, then search those NDCs for the indication for use on DailyMed
+ - Check DEA X waver for prescriber's NPI
+ - Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed
+ - Check prescriber's place of work in NPI DB
+ - interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names
+
+# Session Info
+
+```{r}
+sessionInfo()
+```

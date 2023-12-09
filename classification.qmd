@@ -1,0 +1,976 @@
+---
+title: "Classification of Ambiguous Treatments"
+author: "Matthew Hoctor, PharmD"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+
+quarto::html_document:
+  theme: cerulean
+  highlight: github
+  
+toc: true
+toc-depth: 4
+toc-location: left
+toc-title: Contents
+  
+code-fold: show
+code-overflow: wrap
+code-tools: true
+code-link: true
+
+execute:
+  freeze: auto
+
+editor: source
+---
+
+```{r}
+#| label: setup
+#| #| output: false
+# load libraries:
+library(tidyverse)
+# library(FLAME)                  # not suitable for matching on this dataset
+library(xgboost)
+library(caret)                    #for confusionMatrix function
+library(fst)
+# library(DiagrammeR)               # for plotting XGBoost trees
+library(Ckmeans.1d.dp)            # for xgb.ggplot.importance function
+# library(ggplot2)
+# # library(MazamaSpatialUtils)
+# library(MazamaSpatialPlots)
+# library(plotly)
+# library(leaflet)
+# library(data.table)
+# library(lubridate)
+```
+
+# Overview
+
+We seek to understand the impact of the Comprehensive Addiction and Recovery Act (CARA) of 2016 on patterns of buprenorphine prescribing practices by examining medicare part D data. This exploratory analysis will download and compile medicare part D data before and after the legislation for years 2013-2021, and will examine variables of interest including buprenorphine Rx, methadone Rx, naltrexone Rx, prescriber type, cost to the patient, cost to Medicare, rural vs urban, and more.
+
+Within this section we seek to classify potentially ambiguous entries corresponding to brand names `Buprenorphine` or `Buprenorphine Hcl`. There are several methods to consider including logistic regression, however we will attempt to classify these ambiguities according to the Fast Large-scale Almost Matching Exactly (FLAME) algorithm ([described here](https://arxiv.org/abs/1707.06315)), as implemented in the [FLAME package](https://cran.r-project.org/web/packages/FLAME/). We can consider matching on several variables:
+
+-   The set of other medications prescribed, and/or specific high-yield medications (e.g. methadone, naltrexone, naloxone, etc.)
+-   Prescriber's state or county
+-   Prescriber's NCHSUR classification
+-   Prescriber's specialty
+-   Unit drug cost; i.e. `Tot_Drug_Cost` / `Tot_Day_Suply`
+
+# Classification of Ambiguous Treatments
+
+## Loading Data
+
+To uniquely identify each row/observation we will add an `id` variable.  First we will update the treatment variable to reflect ambiguous values (i.e. Brnd_Name is either `Buprenorphine` or `Buprenorphine Hcl`), setting the value of `tx` to `bup_ambig`:
+
+```{r}
+# Load saved data
+load(file = "dataset/data.RData")
+# add/update variables
+data <- data |>
+  # update 'tx' variable
+  mutate(tx = ifelse(Brnd_Name == "Buprenorphine" | Brnd_Name == "Buprenorphine Hcl", "bup_ambig", tx)) |>
+  # add 'id' variable corresponding to rownumber
+  mutate(id = row_number()) |>
+  # set 'id' as first variable
+  relocate(id, .before = 1)
+# check: table tx vs brand name for buprenorphine
+table(
+  data$Brnd_Name[data$tx == "bup_oud" | data$tx == "bup_pain" | data$tx == "bup_ambig"],
+  data$tx[data$tx == "bup_oud" | data$tx == "bup_pain" | data$tx == "bup_ambig"]
+)
+```
+
+## Find Classifiers
+
+### Prescribing Pattern
+
+We can now create a dataset of NPI/year pairs corresponding to prescribers who have prescribed buprenorphine that year. We will use this dataset to extract the other drugs prescribed by these prescribers.
+
+```{r}
+providers <- data |>
+  filter(tx == "bup_oud" | tx == "bup_pain" | data$tx == "bup_ambig") |>
+  select(Prscrbr_NPI, year, tx) |>
+  distinct()
+```
+
+Count number of NPI/year pairs in the `providers` dataset which have both tx == "bup_oud" and tx == "bup_pain"; these pairs will be less useful for classification.
+
+```{r}
+providers |> 
+  group_by(Prscrbr_NPI, year) |> 
+  summarise(
+    n = n(),
+    n_oud = sum(tx == "bup_oud"),
+    n_pain = sum(tx == "bup_pain"),
+    .groups = "drop_last"
+  ) |> 
+  filter(n_oud > 0 & n_pain > 0) |>
+  nrow()
+```
+
+Pivot the `providers` dataset to wide format such that each row is a unique NPI/year pair with new columns for each treatment bucket (i.e. `bup_oud`, `bup_pain`, `bup_ambig`):
+
+```{r}
+providers_wide <- providers |>
+  pivot_wider(
+    id_cols = c(Prscrbr_NPI, year),
+    names_from = tx,
+    values_from = tx,
+    # should the line below be as follows:
+    # values_fn = function(x) (length(x)/length(x)),
+    values_fn = length,
+    values_fill = 0
+  )
+# examine providers with bup_ambig==1
+sum(providers_wide$bup_ambig == 1)
+sum(providers_wide$bup_ambig == 0)
+sum(providers_wide$bup_ambig == 0 & providers_wide$bup_oud == 1 & providers_wide$bup_pain == 1)
+table(
+  providers_wide$bup_oud[providers_wide$bup_ambig == 1],
+  providers_wide$bup_pain[providers_wide$bup_ambig == 1],
+  dnn = c("bup_oud", "bup_pain")
+)
+```
+
+We can now create a new dataset of observations corresponding to NPI/year pairs corresponding to prescribers who have prescribed buprenorphine that year:
+
+```{r}
+# create data_classification as an empty dataset:
+data_classification <- data.frame()
+# iterate over years 2013-2021:
+for (year in 2013:2021) {
+  # load the data:
+  data_year <- read_fst(
+    paste0("data/", year, ".fst")
+  ) |>
+  # select only necessary variables
+  select(Prscrbr_NPI, Brnd_Name, Gnrc_Name)
+  # set the `year` variable:
+  data_year$year <- year
+  
+  # inner join with `providers_wide` dataset to restrict to NPI/year combinations from `providers`:
+  data_year <- inner_join(
+      data_year,
+      providers_wide, 
+      by = c("Prscrbr_NPI", "year"),
+      relationship = "many-to-one"
+    )
+  # append the data to the `data_classification` dataset:
+  data_classification <- rbind(data_classification, data_year)
+}
+# cleanup
+rm(data_year, year)  
+```
+
+We can now widen the `data_classification` dataset created above such that each row is a unique NPI/year pair with new columns for the generic names of each drug prescribed. First some numbers:
+
+```{r}
+# count the number of distinct generic names in the dataset
+data_classification |> select(Gnrc_Name) |> n_distinct()
+# count number of distinct NPI/year pairs in the `providers` dataset
+providers |> select(Prscrbr_NPI, year)  |> n_distinct()
+# average number of generic names per NPI/year pair
+nrow(data_classification)/154354
+# summing over bup_oud, bup_pain, and bup_ambig
+sum(data_classification$bup_oud)
+sum(data_classification$bup_pain)
+sum(data_classification$bup_ambig)
+```
+
+Looking again at the most frequently prescribed drugs in the dataset, this time breaking it down by bup_pain and bup_oud:
+
+```{r}
+drug_freq <- data_classification |> 
+  # exclude unhelpful observations with oud==1 & pain==1 & ambig==0
+  filter(!(bup_oud == 1 & bup_pain == 1 & bup_ambig == 0)) |>
+  # exclude observations mapping to bup_ambig, i.e. Brnd_Name is either `Buprenorphine` or `Buprenorphine Hcl`
+  filter(!(Brnd_Name == "Buprenorphine" | Brnd_Name == "Buprenorphine Hcl")) |>
+  # compute summary statistics by grouping
+  group_by(Gnrc_Name) |> 
+  summarise(
+    n_oud = sum(bup_oud),
+    n_pain = sum(bup_pain),
+    n_ambig = sum(bup_ambig),
+    n = n()
+  )
+# display top 100
+drug_freq |> 
+  arrange(desc(n)) |> 
+  head(100)
+```
+
+Normalize the counts by dividing by the total number of NPI/year pairs in the dataset; then compute a contrast score and weighted contrast score for each drug; the contrast will be the absolute value of the difference between the normalized counts for OUD and pain over the sum of the normalized counts for OUD and pain. The weighted contrast will be the contrast score multiplied by n_ambig:
+
+```{r}
+# calc column totals:
+N_oud <- sum(drug_freq$n_oud)
+N_pain <- sum(drug_freq$n_pain)
+N_ambig <- sum(drug_freq$n_ambig)
+N <- sum(drug_freq$n)
+
+# mutate columns:
+drug_freq <- drug_freq |> 
+# normalize columns:
+  mutate(
+    n_oud = signif(1000*n_oud/N_oud, 3),
+    n_pain = signif(1000*n_pain/N_pain, 3),
+    n_ambig = signif(1000*n_ambig/N_ambig, 3),
+    n = signif(1000*n/N, 3)
+  ) |> 
+  # add contrasts columns for OUD vs pain
+  mutate(
+    contrast = signif((n_oud-n_pain)/(n_oud+n_pain), 3),
+    w_contrast = signif(n_ambig*(n_oud-n_pain)/(n_oud+n_pain), 3)
+  )
+# display top 100
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100)
+
+```
+
+Assess the contrasts:
+
+```{r}
+# sum weighted contrast over top 50 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 50 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+```
+
+This relatively low value suggests that the top 50 generic names are not more sensitive to OUD or to pain.
+
+Repeating the above analysis for Brand Name:
+
+```{r}
+brnd_freq <- data_classification |> 
+  # exclude unhelpful observations with oud==1 & pain==1 & ambig==0
+  filter(!(bup_oud == 1 & bup_pain == 1 & bup_ambig == 0)) |>
+  # exclude observations mapping to bup_ambig, i.e. Brnd_Name is either `Buprenorphine` or `Buprenorphine Hcl`
+  filter(!(Brnd_Name == "Buprenorphine" | Brnd_Name == "Buprenorphine Hcl")) |>
+  # compute summary statistics by grouping
+  group_by(Brnd_Name) |> 
+  summarise(
+    n_oud = sum(bup_oud),
+    n_pain = sum(bup_pain),
+    n_ambig = sum(bup_ambig),
+    n = n()
+  )
+# calc column totals:
+N_oud <- sum(brnd_freq$n_oud)
+N_pain <- sum(brnd_freq$n_pain)
+N_ambig <- sum(brnd_freq$n_ambig)
+N <- sum(brnd_freq$n)
+# mutate columns:
+brnd_freq <- brnd_freq |> 
+# normalize columns:
+  mutate(
+    n_oud = signif(1000*n_oud/N_oud, 3),
+    n_pain = signif(1000*n_pain/N_pain, 3),
+    n_ambig = signif(1000*n_ambig/N_ambig, 3),
+    n = signif(1000*n/N, 3)
+  ) |> 
+  # add contrasts columns for OUD vs pain
+  mutate(
+    contrast = signif((n_oud-n_pain)/(n_oud+n_pain), 3),
+    w_contrast = signif(n_ambig*(n_oud-n_pain)/(n_oud+n_pain), 3)
+  )
+# display top 100
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100)
+```
+
+Assess the contrasts:
+
+```{r}
+# sum weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(50) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+```
+
+These values are similar, but have a somewhat lower absolute value. We can assess the top 100 and top 200 brand and generics similarly:
+
+For the generics:
+
+```{r}
+# sum weighted contrast over top 100 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 100 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+# sum weighted contrast over top 200 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(200) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 50 entries
+drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(200) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+```
+
+For the brands:
+
+```{r}
+# sum weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+# sum weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(200) |>
+  select(w_contrast) |>
+  sum()
+# sum absolute value of weighted contrast over top 50 entries
+brnd_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(200) |>
+  select(w_contrast) |>
+  abs() |>
+  sum()
+```
+
+The top 100 generic drugs seems like a sweet spot; we will use the generic names for classification of ambiguous observations:
+
+```{r}
+generic_top_100 <- drug_freq |> 
+  arrange(desc(abs(w_contrast))) |> 
+  head(100) |>
+  select(Gnrc_Name) |>
+  pull()
+# create new dataset from drug_classification with only top 50 generic names
+gnrc_100_w <- data_classification |> 
+  filter(Gnrc_Name %in% generic_top_100) |>
+  # widen the dataset to create new columns for each of the top drugs
+  pivot_wider(
+    # including bup_pain, bup_oud, bup_ambig to carry them forward
+    id_cols = c(Prscrbr_NPI, year, bup_pain, bup_oud, bup_ambig),
+    names_from = Gnrc_Name,
+    values_from = Gnrc_Name,
+    values_fn = function(x) (length(x)/length(x)),
+    values_fill = 0
+  )
+```
+
+We can now create 100 new variables in the main dataset, `data`, one for each of the top generic names, which will be 1 if the provider prescribed the medication in the given year, and 0 otherwise; i.e. for each observation in `data` the NPI/year pair will match with the NPI/year pair in data_classification.
+
+```{r}
+data_gnrc_100 <- left_join(
+  data,
+  gnrc_100_w,
+  by = c("Prscrbr_NPI", "year"),
+  relationship = "many-to-one"
+)
+```
+
+### Continuous Predictors
+
+Adding other potential predictors including average drug cost per day, average days supply prescribed with summary statistics for unit cost and average days supply by tx:
+
+```{r}
+data_gnrc_100$unit_cst <- data_gnrc_100$Tot_Drug_Cst/data_gnrc_100$Tot_Day_Suply
+data_gnrc_100$days_rx <- data_gnrc_100$Tot_Day_Suply/data_gnrc_100$Tot_Clms
+# summary statistics
+data_gnrc_100 |> 
+  filter(tx == "bup_ambig" | tx == "bup_oud" | tx == "bup_pain") |>
+  group_by(tx) |> 
+  summarise(
+    avg_unit_cst = mean(unit_cst),
+    IQR_unit_cst = IQR(unit_cst),
+    avg_days_rx = mean(days_rx),
+    IQR_days_rx = IQR(days_rx)
+  )
+# Summary statistics for 'Buprenorphine Hcl' and 'Buprenorphine' separately
+data_gnrc_100 |> 
+  filter(Brnd_Name == "Buprenorphine Hcl" | Brnd_Name == "Buprenorphine") |>
+  group_by(Brnd_Name) |> 
+  summarise(
+    avg_unit_cst = mean(unit_cst),
+    IQR_unit_cst = IQR(unit_cst),
+    avg_days_rx = mean(days_rx),
+    IQR_days_rx = IQR(days_rx)
+  )
+# plot histogram days supply by tx
+data_gnrc_100 |> 
+  filter(tx == "bup_ambig" | tx == "bup_oud" | tx == "bup_pain") |>
+  ggplot(aes(x = days_rx, fill = tx)) +
+  geom_histogram(binwidth = 1) +
+  # scale x axis to 0-45
+  scale_x_continuous(limits = c(0, 45)) +
+  facet_wrap(~tx, scales = "free") +
+  theme_minimal()
+# plot histogram unit cost by tx
+data_gnrc_100 |> 
+  filter(tx == "bup_ambig" | tx == "bup_oud" | tx == "bup_pain") |>
+  ggplot(aes(x = unit_cst, fill = tx)) +
+  geom_histogram(binwidth = 1) +
+  # scale x axis to 0-45
+  scale_x_continuous(limits = c(0, 45)) +
+  facet_wrap(~tx, scales = "free") +
+  theme_minimal()
+# plot histogram unit cost by brnd for all bup_ambig
+data_gnrc_100 |> 
+  filter(tx == "bup_ambig") |>
+  ggplot(aes(x = unit_cst, fill = Brnd_Name)) +
+  geom_histogram(binwidth = 1) +
+  # scale x axis to 0-45
+  scale_x_continuous(limits = c(0, 45)) +
+  facet_wrap(~Brnd_Name, scales = "free") +
+  theme_minimal()
+# plot histogram unit cost by brnd for all bup_oud
+data_gnrc_100 |> 
+  filter(tx == "bup_oud") |>
+  ggplot(aes(x = unit_cst, fill = Brnd_Name)) +
+  geom_histogram(binwidth = 1) +
+  # scale x axis to 0-45
+  scale_x_continuous(limits = c(0, 45)) +
+  facet_wrap(~Brnd_Name, scales = "free") +
+  theme_minimal()
+```
+
+This preliminary analysis of these potential predictors suggests that average unit cost is not likely a good predictor, as the ambiguous entries are all generic and thus tend to be much cheaper; however days supply of 27 days or fewer could potentially be a good predictor. We will include days supply less than or equal to 27 as a new variable and cleanup the rest:
+
+```{r}
+data_gnrc_100$days_27 <- ifelse(
+  data_gnrc_100$days_rx <= 27, 
+  1, 0)
+```
+
+## XGBoost
+
+### Dataset Preparation
+
+Prepare a dataset for XGBoost. Using `data.matrix` and then `xgb.DMatrix`. Note that for `data.matrix`, "Logical and factor columns are converted to integers. Character columns are first converted to factors and then to integers."
+
+```{r}
+# first filtering to relevant observations and intentionally creating a numeric treatment variable
+data_xgb <- data_gnrc_100 |> 
+  # filter to only include buprenorphine observations
+  filter(tx == "bup_ambig" | tx == "bup_oud" | tx == "bup_pain") |>
+  # exclude unhelpful observations with oud==1 & pain==1 & ambig==0
+  filter(!(bup_oud == 1 & bup_pain == 1 & bup_ambig == 0)) |>
+  # convert tx variable to numeric: bup_oud = 1, bup_pain = 2, bup_ambig = 3
+  mutate(tx_num = case_when(
+    tx == "bup_oud" ~ 1,
+    tx == "bup_pain" ~ 2,
+    tx == "bup_ambig" ~ 3
+  ))
+# table tx vs tx_num to verify encoding
+table(data_xgb$tx, data_xgb$tx_num)
+```
+
+Proceeding to remove variables which will not be matched on and then convert to a matrix:
+
+```{r}
+data_xgb <- data_xgb |>    # remove variables which will not be matched on (comment out variables to keep)
+  select(
+    -Prscrbr_NPI,
+    -Prscrbr_Last_Org_Name, 
+    -Prscrbr_First_Name, 
+    -Prscrbr_City, 
+    # -Prscrbr_State_Abrvtn, 
+    -Prscrbr_State_FIPS, 
+    -Prscrbr_Type, 
+    -Prscrbr_Type_Src, 
+    -Brnd_Name, 
+    -Gnrc_Name, 
+    -Tot_Clms, 
+    -Tot_30day_Fills, 
+    -Tot_Day_Suply, 
+    -Tot_Drug_Cst, 
+    -Tot_Benes, 
+    -GE65_Sprsn_Flag, 
+    -GE65_Tot_Clms, 
+    -GE65_Tot_30day_Fills, 
+    -GE65_Tot_Drug_Cst, 
+    -GE65_Tot_Day_Suply, 
+    -GE65_Bene_Sprsn_Flag, 
+    -GE65_Tot_Benes, 
+    -MAT_generic, 
+    -MAT_brand, 
+    -tx,                   # no longer outcome variable
+    # -year, 
+    -county_fips, 
+    # -city_fixed, 
+    -random_fips, 
+    -fips, 
+    # -nchsurc, 
+    -ur, 
+    # -type,
+    -bup_pain,
+    -bup_oud,
+    -bup_ambig,
+    -unit_cst,
+    # -days_rx,
+    -days_27,
+    # -tx_num,                 # outcome variable
+    -id
+    )
+```
+
+### Testing Training & Prediction Sets
+
+Split off the set to be predicted from the testing/training data; and split the remaining data into training/testing sets:
+
+```{r}
+# the data to be predicted
+data_xgb.pred <- data_xgb[data_xgb$tx_num == 3,]
+# subset data_xgb to exclude observations to be predicted
+data_xgb <- data_xgb[data_xgb$tx_num != 3,]
+
+#set the seed with the system time
+set.seed(Sys.time())
+#split the data into training and test sets using caret
+trainIndex <- createDataPartition(
+  data_xgb$tx_num, 
+  p = .8, 
+  list = FALSE, 
+  times = 1)
+data_xgb.train <- data_xgb[ trainIndex,]
+data_xgb.test  <- data_xgb[-trainIndex,]
+
+# check sum of rows of the 3 subsets of data_xgb
+nrow(data_xgb.train)+nrow(data_xgb.test)+nrow(data_xgb.pred)
+```
+
+Convert data_xgb ane each of the subsets to `xgb.DMatrix` datatype; this entails defining the outcome variable, removing it from the dataset, and converting to a matrix via `data.matrix()`:
+
+```{r}
+# Training set
+y.train <- data_xgb.train$tx_num-1      # set y.train to tx_num - 1
+DM.data_xgb.train <- data_xgb.train |>  
+  select(-tx_num) |>                    # remove tx_num
+  data.matrix() |>                      # convert to matrix
+  xgb.DMatrix(label = y.train)          # convert to xgb.DMatrix
+
+# testing set
+y.test <- data_xgb.test$tx_num-1        # set t.test to tx_num - 1
+DM.data_xgb.test <- data_xgb.test |>
+  select(-tx_num) |>                    # remove tx_num
+  data.matrix() |>                      # convert to matrix
+  xgb.DMatrix(label = y.test)           # convert to xgb.DMatrix
+
+# prediction set
+DM.data_xgb.ambig <- data_xgb.pred |>
+  select(-tx_num) |>                    # remove tx_num
+  data.matrix() |>                      # convert to matrix
+  xgb.DMatrix()                         # convert to xgb.DMatrix
+
+# full dataset
+y <- data_xgb$tx_num-1                  # set y to tx_num - 1
+DM.data_xgb <- data_xgb |>
+  select(-tx_num) |>                    # remove tx_num
+  data.matrix() |>                      # convert to matrix
+  xgb.DMatrix(label = y)                # convert to xgb.DMatrix
+```
+
+### Model Fitting
+
+Now we can specify the parameters for the training of model, and run:
+
+```{r}
+# watchlist <- list(
+#   train = DM.data_xgb.train, 
+#   test = DM.data_xgb.test)
+# params <- list(
+#   objective = "binary:logistic")
+param <- list(
+  "objective" = "multi:softprob",
+  "num_class" = 2)
+xfit1 <- xgb.cv(
+  params = param,
+  data = DM.data_xgb,
+  nrounds = 10,
+  nfold = 5,
+  prediction = TRUE,
+  stratified = TRUE,
+  train_folds = trainIndex,
+  verbose = TRUE
+)
+```
+
+```{r}
+print(xfit1)
+```
+
+```{r}
+param <- list(
+  "objective" = "multi:softprob",
+  "num_class" = 2)
+watchlist <- list(
+  train = DM.data_xgb.train, 
+  eval = DM.data_xgb.test)
+
+xfit2 <- xgboost::xgboost(
+  param = param, 
+  data = DM.data_xgb.train, 
+  nrounds=3)
+
+xfit3 <- xgb.train(
+  param = param, 
+  data = DM.data_xgb.train, 
+  nrounds=100,
+  watchlist = watchlist)
+```
+
+Overfitting seems to set in after \~30 iterations, so let's create another model with 30 iterations:
+
+```{r}
+xfit4 <- xgb.train(
+  param = param, 
+  data = DM.data_xgb.train, 
+  nrounds=30,
+  watchlist = watchlist)
+```
+
+```{r}
+print(xfit4)
+```
+
+```{r}
+xgb.plot.multi.trees(model = xfit4)
+```
+
+```{r}
+pred = predict(
+  xfit4,
+  DM.data_xgb.train)
+pred = matrix(pred,ncol=3,byrow=T)
+pclass = apply(pred,1,which.max)
+mat4 <- data_xgb |>
+  select(-tx_num) |>                  # remove tx_num
+  colnames() |>                       # get column names
+  xgb.importance(                     # get importance matrix
+    # feature_names = .,                # use column names
+    model = xfit4)
+# old code:
+# mat4 = xgb.importance(
+#   feature_names = colnames(data_xgb[,-c("tx_num")]),   # don't include tx number
+#   model = xfit4)
+xgb.ggplot.importance(
+  importance_matrix = mat4,
+  top_n = 20)
+```
+
+Tabulation of proportion of prescribers who prescribed bup_ambig who also prescribed a product with generic name "Buprenorphine Hcl/Naloxone Hcl":
+
+```{r}
+data_gnrc_100 |>
+  filter(bup_ambig == 1) |>
+  group_by(Prscrbr_NPI, year) |>
+  summarise(
+    n = n(),
+    n_bup_nal = sum(Gnrc_Name == "Buprenorphine Hcl/Naloxone Hcl"),
+    .groups = "drop") |>
+  summarise(
+    N = n(),
+    # number of rows where n_bup_nal > 0
+    n_bup_nal = sum(n_bup_nal > 0),
+    # proportion of rows where n_bup_nal > 0
+    prop_bup_nal = n_bup_nal/N)
+```
+
+### Confusion Matrix
+
+This suggests that bup/naloxone likely is an important predictor for our ambiguous observations. Now we calculate the confusion matrix for xfit4:
+
+```{r}
+pred.test <- predict(
+  xfit4,
+  DM.data_xgb.test,
+  strict_shape = TRUE)
+
+pred_labels <- factor(
+  round(
+    pred.test[2,])+1, 
+  labels = c("bup_oud", "bup_pain"))
+
+test_labels <- factor(
+  data_xgb.test$tx_num,
+  labels = c("bup_oud", "bup_pain"))
+
+confusionMatrix(
+  pred_labels,
+  test_labels
+  )
+```
+
+# Prediction for bup_ambig
+
+```{r}
+# use xfit4 model to predict probabilities
+pred.ambig <- predict(
+  xfit4,
+  DM.data_xgb.ambig,
+  strict_shape = TRUE)
+# convert probabilities to labels
+labels.ambig <- factor(
+  round(pred.ambig[2,])+1, 
+  labels = c("bup_oud", "bup_pain"))
+# add labels to data_xgb.pred
+data_xgb.pred$tx_pred <- labels.ambig
+```
+
+Tabulate some results:
+
+```{r}
+data_xgb.pred |>
+  group_by(tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop")
+# summarize by year
+data_xgb.pred |>
+  group_by(year) |>
+  summarise(
+    n_oud = sum(tx_pred == "bup_oud"),
+    n_pain = sum(tx_pred == "bup_pain"),
+    n = n(),
+    .groups = "drop")
+# summarize by prescriber type
+data_xgb.pred |>
+  group_by(type) |>
+  summarise(
+    n_oud = sum(tx_pred == "bup_oud"),
+    n_pain = sum(tx_pred == "bup_pain"),
+    n = n(),
+    .groups = "drop")
+```
+
+Merge with original data:
+
+```{r}
+ids <- data$id[data$Brnd_Name == "Buprenorphine"|data$Brnd_Name == "Buprenorphine Hcl"]
+# add row id numbers back to data_xgb.pred
+data_xgb.pred$id <- ids
+data_xgb.pred_minimal <- data_xgb.pred |>
+  select(id, tx_pred)
+# merge predicted treatment and bup_pain/bup_oud/Bup_ambig into original dataset
+data_pred <- left_join(
+    data,
+    # the first join is with data_xgb.pred_minimal for the predicted treatments
+    data_xgb.pred_minimal,
+    by = join_by(
+      "id" == "id"),
+    relationship = "one-to-one") |>
+  # the second join is with data_gnrc_100 for the bup_pain/bup_oud/Bup_ambig
+  left_join(
+    data_gnrc_100[c("id", "bup_pain", "bup_oud", "bup_ambig")],
+    by = join_by(
+      "id" == "id"),
+    relationship = "one-to-one")
+```
+
+# Examining Predicted Data
+
+Looking at the predictions in relation to several other important variables including NCHSURC, provider type, generic name of buprenorphine prescribed, and other drugs prescribed:
+
+```{r}
+# beginning by joining the predicted data with data_gnrc_100
+data_gnrc_100 <- left_join(
+  data_gnrc_100,
+  data_xgb.pred_minimal,
+  by = join_by(
+    "id" == "id"),
+  relationship = "one-to-one")
+```
+
+## Tabulate by NCHSURC
+
+```{r}
+# tabulate predicted by NCHSURC
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(nchsurc, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+## Tabulate by provider type
+
+```{r}
+# tabulate predicted by type
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(type, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+## Tabulate by generic name
+
+```{r}
+# tabulate predicted by generic name
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(Gnrc_Name, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+## Tabulate by days_27
+
+```{r}
+# tabulate by days_27
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(days_27, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+## Tabulate by "Buprenorphine Hcl/Naloxone Hcl"
+
+```{r}
+# tabulate by "Buprenorphine Hcl/Naloxone Hcl"
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(`Buprenorphine Hcl/Naloxone Hcl`, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+## Tabulate by year
+
+```{r}
+# tabulate by year
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(year, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+## Tabulate by NP/PA Rx by year
+
+```{r}
+# tabulate NP/PA Rx by year
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  filter(type == "NP" | type == "PA") |>
+  group_by(year, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+# Cleanup
+
+Save the dataset:
+
+```{r}
+save(data_pred, file = "dataset/data_pred.RData")
+```
+
+Cleanup:
+
+```{r}
+# rm(brnd_freq, drug_freq, gnrc_100_w, providers, providers_wide, generic_top_100, N, N_ambig, N_oud, N_pain)
+```
+
+```{r}
+# rm(data_classification, data_gnrc_100, data_xgb, data_xgb.pred, data_xgb.pred_minimal, data_xgb.test, data_xgb.train, M.data_xgb.test, M.data_xgb.train, N, oj, param, params, pred, pred.ambig, pred.test, trainIndex, watchlist, xfit0, xfit1, xfit2, xfit3, DM.data_xgb, DM.data_xgb.ambig, DM.data_xgb.test, DM.data_xgb.train, labels.ambig, pclass, pred_labels, test_labels, y, y.test, y.train)
+```
+
+# Other Thoughts
+
+**Sensitivity analyses**:
+ - see of the false positives produced by the lower specificity produces any effect on the results
+ - test assumption that providers essentially fall into two groups: those who prescribe buprenorphine for pain and those who prescribe buprenorphine for opioid use disorder
+
+Perhaps the gradient boosting would be improved by:
+
+-   with the 200 top drugs
+-   using continuous measures for the top drugs instead of binary prescribed vs not prescribed; such measures could include:
+    -   'Tot_Clms' (total number of claims)
+    -   'Tot_Day_Sup' (total days supply)
+-   Using calculated continuous measures
+    -   average cost
+    -   average days supply
+-   Have another go at using the `binary:logistic` objective, as it should work as well as the `multi:softprob` objective, as it should work as well as the softprob    
+-   Have another go at cross-validation
+
+Future work could include:
+
+-   Gradient boosting with `catboost` package
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
