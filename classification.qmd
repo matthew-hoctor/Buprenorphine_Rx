@@ -31,7 +31,7 @@ library(tidyverse)
 # library(FLAME)                  # not suitable for matching on this dataset
 library(xgboost)
 library(caret)                    #for confusionMatrix function
-library(fst)
+library(fst)                      # for fast loading/saving of datasets
 # library(DiagrammeR)               # for plotting XGBoost trees
 library(Ckmeans.1d.dp)            # for xgb.ggplot.importance function
 # library(ggplot2)
@@ -931,20 +931,34 @@ data_gnrc_100 |>
 
 # Cleanup
 
-Save the dataset:
+Save the datasets:
 
 ```{r}
 save(data_pred, file = "dataset/data_pred.RData")
+save(data_gnrc_100, file = "dataset/data_gnrc_100.RData")
 ```
 
 Cleanup:
 
 ```{r}
-# rm(brnd_freq, drug_freq, gnrc_100_w, providers, providers_wide, generic_top_100, N, N_ambig, N_oud, N_pain)
-```
-
-```{r}
-# rm(data_classification, data_gnrc_100, data_xgb, data_xgb.pred, data_xgb.pred_minimal, data_xgb.test, data_xgb.train, M.data_xgb.test, M.data_xgb.train, N, oj, param, params, pred, pred.ambig, pred.test, trainIndex, watchlist, xfit0, xfit1, xfit2, xfit3, DM.data_xgb, DM.data_xgb.ambig, DM.data_xgb.test, DM.data_xgb.train, labels.ambig, pclass, pred_labels, test_labels, y, y.test, y.train)
+# rm(
+#   brnd_freq, 
+#   drug_freq, 
+#   gnrc_100_w, 
+#   providers, 
+#   providers_wide, 
+#   generic_top_100, 
+#   N, N_ambig, N_oud, N_pain,
+#   data_classification, 
+#   # data_gnrc_100, 
+#   data_xgb,
+#   data_xgb.pred, data_xgb.pred_minimal, data_xgb.test, data_xgb.train, 
+#   M.data_xgb.test, M.data_xgb.train, N, oj, param, params, pred, pred.ambig, pred.test, 
+#   trainIndex, watchlist, 
+#   xfit0, xfit1, xfit2, xfit3, 
+#   DM.data_xgb, DM.data_xgb.ambig, DM.data_xgb.test, DM.data_xgb.train, 
+#   labels.ambig, pclass, pred_labels, test_labels, y, y.test, y.train
+#   )
 ```
 
 # Other Thoughts
@@ -955,19 +969,19 @@ Cleanup:
 
 Perhaps the gradient boosting would be improved by:
 
--   with the 200 top drugs
--   using continuous measures for the top drugs instead of binary prescribed vs not prescribed; such measures could include:
+-   Explicitly model the outcome as the indication for the Rx; i.e. the outcome would not be 'bup_oud', it would be prescription indicated for OUD vs prescription indicated for severe pain
+    -   Entries for methadone (and maybe Naltrexone?) could be added to the analysis as they are indicated for OUD
+    -   Entries for other opioids could be added to the analysis as they are indicated for sever pain; we could also look at the top drugs prescribed by pain specialists for many many more ideas
+-   Include the 200 top drugs as predictors
+-   Use continuous measures of prescribing pattern for the predictors instead of binary prescribed vs not prescribed; such measures could include:
     -   'Tot_Clms' (total number of claims)
     -   'Tot_Day_Sup' (total days supply)
--   Using calculated continuous measures
-    -   average cost
-    -   average days supply
--   Have another go at using the `binary:logistic` objective, as it should work as well as the `multi:softprob` objective, as it should work as well as the softprob    
--   Have another go at cross-validation
-
-Future work could include:
-
--   Gradient boosting with `catboost` package
+    -   Total beneficiaries likely has too many NA values to be a good aggreagate statistic, although the geographic aggregate data could be used to impute values here
+-   Try new moralities:
+    -   Retry `binary:logistic` objective, as it should work as well as the `multi:softprob` objective, as it should work as well as the softprob    
+    -   Try cross-validation and possibly add more rounds of learning (as overfitting should not occur as quickly)
+    -   Use `catboost` package
+-   Simplify the 'type variable to include only "NP/PA", "FP/IM", "Pain", "Psych", "Other"
 
 # Session Info
 

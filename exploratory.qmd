@@ -110,7 +110,46 @@ bup_ndcs <- read_csv("data/bup_NDCs.csv")
 
 # Exploratory Analysis
 
-## Examine NDCs/Products
+## Geographic MAT Prescribing Patterns
+
+```{r}
+#| label: examine geo data
+
+# map total claims for buprenorphine by state using stateMap()
+geo_test <- geo |>
+  # exclude national level entries
+  filter(!Prscrbr_Geo_Desc == "National") |>
+  # filter to generic names containing 'Buprenorphine'
+  filter(grepl("Buprenorphine", Gnrc_Name)) |>
+  # rename Prscrbr_Geo_Desc to 'stateCode'
+  dplyr::mutate(stateCode = stateToCode(Prscrbr_Geo_Desc)) |>
+  # group by year and state
+  group_by(year, stateCode) |>
+  # summarize total claims
+  summarize(
+    Bup_Clms = sum(Tot_Clms)
+  ) |>
+  # plot using stateMap()
+  stateMap(
+    parameter = "Bup_Clms",
+    palette = viridisLite::viridis(20),
+    stateBorderColor = 'black',
+    title = "Total Buprenorphine Claims by State"
+  )
+geo_test
+```
+
+```{r}
+
+```
+
+# Missing Data
+
+First we will look at missing values in the data for key variables in the main dataset including 'Tot_Clms', 'Tot_Day_Suply', 'Tot_Benes'; then we will proceed to examine the classification of the ambiguous buprenorphine products (i.e. NDCs mapping to 'Buprenorphine' or 'Buprenorphine Hcl'); and finally examine less than complete geographic data including unmatched city names (i.e. the 'random_fips' == TRUE cases), and also locations in Connecticut (which were assigned a county FIPS code based on a separate lookup table). We can initially look at the totals for the full dataset, and then break down these values by year, by drug, and by prescriber type; and optionally look at potential interactions of interest.
+
+## Ambiguous Buprenorphine NDCs
+
+### Examine NDCs/Products
 
 Products mapping to 'buprenorphine':
 
@@ -157,55 +196,138 @@ bup_ndcs |>
 
 From these results we can confrim that the CMS aggregation by brand name is not sufficient to differentiate buprenorphine products used for OUD vs pain; and in particular that the SL tablets (for OUD, previously sold as Subutex) map to 'Buprenorphine HCl' and to 'Buprenorphine', whereas buprenorphine hcl for IM/IV injection (previously sold as Buprenex) maps to 'Buprenorphine HCl', and buprenorphine ER (for pain, previously sold as Butrans) patch maps to 'Buprenorphine'.
 
-## Examine geo data
+### Patterns of XGBoost Classified Data
+
+
+Looking at the predictions in relation to several other important variables including NCHSURC, provider type, generic name of buprenorphine prescribed, and other drugs prescribed:
+
+#### Tabulate by NCHSURC
 
 ```{r}
-#| label: examine geo data
-
-# map total claims for buprenorphine by state using stateMap()
-geo_test <- geo |>
-  # exclude national level entries
-  filter(!Prscrbr_Geo_Desc == "National") |>
-  # filter to generic names containing 'Buprenorphine'
-  filter(grepl("Buprenorphine", Gnrc_Name)) |>
-  # rename Prscrbr_Geo_Desc to 'stateCode'
-  dplyr::mutate(stateCode = stateToCode(Prscrbr_Geo_Desc)) |>
-  # group by year and state
-  group_by(year, stateCode) |>
-  # summarize total claims
-  summarize(
-    Bup_Clms = sum(Tot_Clms)
-  ) |>
-  # plot using stateMap()
-  stateMap(
-    parameter = "Bup_Clms",
-    palette = viridisLite::viridis(20),
-    stateBorderColor = 'black',
-    title = "Total Buprenorphine Claims by State"
-  )
-geo_test
+# tabulate predicted by NCHSURC
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(nchsurc, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
 ```
+
+#### Tabulate by provider type
 
 ```{r}
-
+# tabulate predicted by type
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(type, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
 ```
 
+#### Tabulate by generic name
 
-# Missing Data
+```{r}
+# tabulate predicted by generic name
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(Gnrc_Name, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
 
-First we will look at missing values in the data for key variables including 'Tot_Clms', 'Tot_Day_Suply', 'Tot_Benes', and using the 'random_fips' variable to identify missing values by county. We will initially look at the totals for the full dataset, and then break down these values by year, by drug, and by prescriber type.
+#### Tabulate by days_27
 
-## Geographic MAT Prescribing Patterns
+```{r}
+# tabulate by days_27
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(days_27, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
 
-The data can be plotted according to FIPS code using `ggplot2` or `MazamaSpatialPlots` packages.
+#### Tabulate by "Buprenorphine Hcl/Naloxone Hcl"
 
-### Buprenorphine
+```{r}
+# tabulate by "Buprenorphine Hcl/Naloxone Hcl"
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(`Buprenorphine Hcl/Naloxone Hcl`, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
 
-### Methadone
+#### Tabulate by year
 
-### Naltrexone
+```{r}
+# tabulate by year
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  group_by(year, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
 
-## Causal Discovery?
+#### Tabulate by NP/PA Rx by year
+
+```{r}
+# tabulate NP/PA Rx by year
+data_gnrc_100 |>
+  filter(tx == "bup_ambig") |>
+  filter(type == "NP" | type == "PA") |>
+  group_by(year, tx_pred) |>
+  summarise(
+    n = n(),
+    .groups = "drop") |>
+  pivot_wider(
+    names_from = tx_pred,
+    values_from = n,
+    values_fill = 0)
+```
+
+## Geographic Data
+
+### Randomly Assigned FIPS Codes
+
+### Connecticut FIPS Codes
+
+# Causal Discovery?
+
+# Cleanup
+
+```{r}
+rm(nppa_2017, nppa_drugs, bup_ndcs)
+```
+
 
 # Other Thoughts
 
@@ -216,13 +338,6 @@ Indication for OUD use is a potential source of error when assessing prescriptio
 -   Check prescriber's buprenorphine panel limit vs count of buprenorphine prescribed
 -   Check prescriber's place of work in NPI DB
 -   interrogate/validate CMS's method for translating a drug's NDC into a drug's brand and generic names
-
-# Unused Code
-
-```{r}
-
-```
-
 
 # Session Info
 

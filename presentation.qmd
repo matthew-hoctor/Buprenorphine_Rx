@@ -3,15 +3,16 @@ title: "Buprenorphine Presentation"
 author: "Matthew Hoctor, PharmD"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 
-format: 
+format:
   revealjs:
-    theme: solarized
-    # template: OHSU-PSU
+    logo: presentation/ohsu-psu.jpg
+  beamer:
+    logo: presentation/ohsu-psu.jpg
   
 toc: true
-toc-depth: 4
-toc-location: left
-toc-title: Contents
+toc-depth: 3
+# toc-location: left
+# toc-title: Contents
   
 code-fold: true
 code-overflow: wrap
@@ -20,6 +21,12 @@ code-overflow: wrap
 
 editor: source
 ---
+
+```{r}
+#| label: setup
+#| output: false
+1 + 1
+```
 
 # Background
 
@@ -48,6 +55,10 @@ Consolidated Appropriations Act (MAT), 2023
 -   Removed X-waiver requirement
 
 ## Motivation
+
+# Analysis
+
+# Results
 
 # Conclusion
 
