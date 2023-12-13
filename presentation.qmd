@@ -6,15 +6,17 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 format:
   revealjs:
     logo: presentation/ohsu-psu.jpg
+    chalkboard: true
+    multiplex: true
   beamer:
     logo: presentation/ohsu-psu.jpg
   
 toc: true
-toc-depth: 3
-# toc-location: left
-# toc-title: Contents
+toc-depth: 4
+toc-location: left
+toc-title: Objectives
   
-code-fold: true
+code-fold: false
 code-overflow: wrap
 # code-tools: true
 # code-link: true
