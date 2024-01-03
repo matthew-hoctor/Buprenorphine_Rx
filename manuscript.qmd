@@ -60,9 +60,11 @@ if (!exists("data_pred")) {
 
 *This section may be shortened to meet an expected word count cap of 2500 words, and/or changed according to the literature review.*
 
-This compiled report seeks to adhere to the STROBE guidelines for observational studies, @vandenbrouckeStrengtheningReportingObservational2007 as well as the CHEERS guidelines for economic evaluations. @husereauConsolidatedHealthEconomic2022  
+Opioids are medications are medications which act as agonists at opoid receptors in the central nervous system, producing a depressant effect, analgesia, and sometimes euphoria. Opioids are commonly used to treat pain, but are also used recreationally. Opioid use disorder (OUD) is a chronic, relapsing condition characterized by the compulsive use of opioids despite adverse consequences. OUD is a major public health concern in the United States, with an estimated 2.1 million people suffering from OUD in 2018. @comptonEpidemiologyOpioidCrisis2019 OUD is associated with a number of adverse outcomes, including increased risk of overdose and death, increased risk of infectious disease, and increased risk of incarceration. OUD is also associated with increased risk of fracture and motor-vehicle accidents. @larochelleMedicationOpioidUse2018
 
+Medications for treatment of OUD in the United States includes methadone, buprenorphine, and naltrexone; naltrexone is an opioid antagonist, whereas buprenorphine is a partial opioid agonist, and methadone is a full opioid agonist.  Guidelines from the American Society of Addiction Medicine (ASAM) recommend that all patients with OUD be offered medication for treatment of OUD. @kampmanAmericanSocietyAddiction2015; @ASAMNationalPractice2020a  However the legislative framework within the United States has historically been a barrier to providing this treatment.  Methadone may only be prescribed and dispensed for OUD treatment within the context of a licensed opoid treatment program.  In 2000, the Drug Addiction Treatment Act (DATA) was passed, which allowed physicians to prescribe buprenorphine for treatment of OUD in an office-based setting.  However, DATA limited the number of patients that a physician could treat with buprenorphine to 30 patients in the first year, and 100 patients thereafter.  In 2016, the Comprehensive Addiction Recovery Act (CARA) was passed, which allowed nurse practitioners (NPs) and physician assistants (PAs) to prescribe buprenorphine for treatment of OUD.  Recent legislation has further expanded the number of patients that a physician, NP, or PA can treat with buprenorphine to 275 patients.  
 
+However, the impact of CARA on buprenorphine prescribing practices has not been well characterized within the elderly population.  This population is of particular interest because this growing population have a unique range of risk factors including the greater prevalence of chronic pain, and may be at greater risk of complications of OUD such as fracture and motor-vehicle accident.  Future legislative and regulatory efforts could potentially be informed by an examination of the impact of CARA on buprenorphine prescribing practices within this population.  This compiled report seeks to adhere to the STROBE guidelines for observational studies, @vandenbrouckeStrengtheningReportingObservational2007 as well as the CHEERS guidelines for economic evaluations. @husereauConsolidatedHealthEconomic2022  
 
 # Methods
 
@@ -109,6 +111,8 @@ XGBoost paper  @chenXGBoostScalableTree2016
 # Conclusion
 
 
+
+?Should I consider a statement of which author did which tasks?
 
 # References {-}
 
@@ -188,4 +192,4 @@ Consider using a flow chart explicitly showing how the providers became part of 
 
 # Supplementary Material
 
-A full code appendix can be found at [https://github.com/matthew-hoctor/Buprenorphine_Rx](https://github.com/matthew-hoctor/Buprenorphine_Rx).
+A full code appendix can be found at [https://github.com/matthew-hoctor/Buprenorphine_Rx](https://github.com/matthew-hoctor/Buprenorphine_Rx); and the quarto used to generate this manuscript can be found at [https://github.com/matthew-hoctor/Buprenorphine_Rx/blob/main/manuscript.qmd](https://github.com/matthew-hoctor/Buprenorphine_Rx/blob/main/manuscript.qmd.)
