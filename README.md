@@ -14,7 +14,7 @@ Materials and code for my MPH practice experience project on the effect of the C
  - Analysis
     - [Exploratory Analysis](https://matthew-hoctor.github.io/Buprenorphine_Rx/exploratory.html)
  - [Presentation](https://docs.google.com/presentation/d/10U3TzVnEd3zpRZZ3eaKIbNz_-pKdhGjyaQu43tyH0tc)
- - [Manuscript](https://docs.google.com/document/d/1eOHztptP_PlpvaBoXK2Nw3XNc5rpJBeZzovSYVu1vfo)
+ - [Manuscript](https://github.com/matthew-hoctor/Buprenorphine_Rx/blob/main/manuscript.pdf) [code](https://github.com/matthew-hoctor/Buprenorphine_Rx/blob/main/manuscript.qmd)
 
 
 Tentative: Exploring Effects of the Comprehensive Addiction Recovery Act on Buprenorphine Prescribing Practices using Medicare Part D Data
